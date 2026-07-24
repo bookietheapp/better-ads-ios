@@ -1,99 +1,71 @@
 # Better Ads (iOS)
 
-Standalone Swift package (`BetterAds`) that iOS apps use to **fetch ad creatives** and **report ad analytics** against a dedicated ads backend.
+Standalone Swift package (`BetterAds`) that returns **ready-to-display SwiftUI ad views** matching Bookie’s in-app placement ads, and reports impressions / clicks to a dedicated ads backend.
 
-The host app renders ads; this SDK owns all networking for:
+## Formats (Bookie parity)
 
-| Operation | Endpoint |
-|-----------|----------|
-| Fetch ad | `GET /ads/:type` |
-| Impression | `POST /ads/:type/impressions` |
-| Click | `POST /ads/:type/clicks` |
+Aligned with Bookie `PlacementAdSize` + layouts:
 
-Rendering is out of scope — the SDK returns `AdModel` data only.
+| Format | Bookie view | Layout |
+|--------|-------------|--------|
+| `.compact` | `PlacementAdCompactView` | Row: 50×53 hero, wordmark/headline, description, capsule CTA; “Ad” chip |
+| `.banner` | `PlacementAdBannerView` | Fixed height 164; left copy (50% width) + 205×164 hero; “Ad” chip |
+| `.card` | `PlacementAdCardView` | Vertical: wordmark → 205×164 hero → centered title block → full-width CTA; “Advertisement” chip |
+| `.interstitial` | _(skipped)_ | No UI (same as Bookie) |
 
-## Requirements
-
-- iOS 17+ (aligned with the Bookie iOS app deployment target)
-- Swift 5.9+
-- No third-party dependencies
-
-## Installation (Swift Package Manager)
-
-### Xcode
-
-1. **File → Add Package Dependencies…**
-2. Enter the repository URL for this package
-3. Add the `BetterAds` product to your app target
-
-### `Package.swift`
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/YOUR_ORG/better-ads-ios.git", from: "0.1.0"),
-],
-targets: [
-    .target(
-        name: "YourApp",
-        dependencies: [
-            .product(name: "BetterAds", package: "better-ads-ios"),
-        ]
-    ),
-]
-```
-
-> Replace the URL / version once the package is published.
+Creative payload mirrors Bookie `PlacementAdResponse` (`campaignId`, hex colors, CTA colors, hero/icon 1x/2x/3x, `*emphasis*` in description).
 
 ## Usage
 
 ```swift
 import BetterAds
+import SwiftUI
 
-let client = BetterAdsClient(
-    configuration: BetterAdsConfiguration(
-        baseURL: URL(string: "https://ads.example.com")!,
-        apiKey: "YOUR_API_KEY",          // optional — see Auth assumption below
-        sessionID: sessionIdentifier,    // injected by host
-        userID: currentUserID,           // optional
-        locale: .current
+struct HomeView: View {
+    private let ads = BetterAdsClient(
+        configuration: BetterAdsConfiguration(
+            baseURL: URL(string: "https://ads.example.com")!,
+            apiKey: "YOUR_API_KEY",
+            sessionID: sessionIdentifier,
+            userID: currentUserID,
+            locale: .current
+        )
     )
-)
 
-// Fetch (host renders)
-let ad = try await client.fetchAd(type: AdType("home_banner"))
+    var body: some View {
+        ScrollView {
+            BetterAdView(format: .banner) { action in
+                // Optional — required for deeplinks.
+                // If omitted, `.url` opens via SwiftUI `openURL`.
+                handle(action)
+            }
 
-// When the ad appears on screen
-client.trackImpression(for: ad.type)
-
-// When the CTA is tapped
-client.trackClick(for: ad.type, ctaValue: ad.cta.action.value)
+            BetterAdView(format: .compact)
+            BetterAdView(format: .card)
+        }
+        .betterAdsClient(ads)
+    }
+}
 ```
 
-Impression / click tracking is **best-effort and non-blocking**. Failures are logged and never thrown to the host, so analytics outages cannot break ad rendering.
+### Tracking (owned by the view)
 
-## Public API
+| Event | When |
+|-------|------|
+| Impression | Loaded creative appears (`onAppear`) — once per view model |
+| Click | CTA tapped → analytics POST, then `onAction` / `openURL` |
 
-| API | Behavior |
-|-----|----------|
-| `BetterAdsClient(configuration:)` | Configure base URL + identity/locale |
-| `fetchAd(type:) async throws -> AdModel` | Fetch & decode ad content |
-| `trackImpression(for:)` | Fire-and-forget `POST …/impressions` |
-| `trackClick(for:ctaValue:)` | Fire-and-forget `POST …/clicks` |
+Host apps should **not** fire ad analytics themselves.
 
-## Ad model
+## Visual review
 
-```text
-AdModel
-├── type
-├── brand
-├── images.hero / images.icon  →  1x / 2x / 3x signed URLs
-├── headline
-├── description
-└── cta
-    ├── title
-    └── action.type  (url | deeplink)
-        action.value
-```
+Open `Package.swift` in Xcode and use `#Preview` on:
+
+- `CompactAdLayout`
+- `BannerAdLayout`
+- `CardAdLayout`
+
+Fixtures use a neutral sample brand (no real advertiser).
 
 ## Development
 
@@ -102,13 +74,9 @@ swift build
 swift test
 ```
 
-## Assumptions / open questions
+## Notes / gaps vs Bookie app
 
-See the handoff notes in the initial commit / engineering docs. In short:
-
-1. **Auth** — optional `X-API-Key` header for now; backend team should confirm the real scheme.
-2. **Identity** — `session_id`, `user_id`, and `locale` are injected by the host and forwarded on analytics POSTs.
-3. **Hosting / CI** — GitHub Actions workflow is included as a starting point.
-4. **License** — proprietary placeholder; confirm internal standard text.
-5. **Offline queuing** — not implemented; failed analytics calls are logged only.
-6. **Versioning** — recommend SemVer starting at `0.1.0` once published.
+1. **Fonts** — Bookie uses Canela + app design-system faces. The SDK uses system serif at the same sizes / tracking / line heights so **geometry matches**; swap in Bookie font providers later if pixel-perfect type is required.
+2. **Images** — SDK uses `AsyncImage`; Bookie uses `RemoteImage` with pixel-size hints. Visual result is equivalent for layout.
+3. **Auth / analytics backend** — dedicated ads service (`/ads/:type`, `/impressions`, `/clicks`); not Bookie’s Firebase `impression` / `placement_ad_click`.
+4. **Copy** — “Ad” / “Advertisement” localized in the package (`en` / `de` / `pt-BR`), matching Bookie intent.

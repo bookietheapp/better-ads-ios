@@ -1,8 +1,9 @@
 import Foundation
 
-/// Identifies which ad placement to fetch or report analytics for.
+/// Identifies which ad to fetch — the `:type` path segment in `/ads/:type`.
 ///
-/// The raw value is used as the `:type` path segment in `/ads/:type`.
+/// For Bookie placement parity, pass the format raw value
+/// (`AdFormat.compact.rawValue`, `.banner`, `.card`).
 public struct AdType: RawRepresentable, Hashable, Sendable, Codable, CustomStringConvertible {
     public let rawValue: String
 
@@ -12,6 +13,10 @@ public struct AdType: RawRepresentable, Hashable, Sendable, Codable, CustomStrin
 
     public init(_ rawValue: String) {
         self.rawValue = rawValue
+    }
+
+    public init(format: AdFormat) {
+        self.rawValue = format.rawValue
     }
 
     public var description: String { rawValue }

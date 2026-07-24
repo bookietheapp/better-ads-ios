@@ -3,62 +3,39 @@ import XCTest
 @testable import BetterAds
 
 final class BetterAdsTests: XCTestCase {
-    private let adType = AdType("home_banner")
+    private let adType = TestFixtures.bannerAdType
     private let baseURL = URL(string: "https://ads.example.com")!
-
-    private var sampleAdJSON: String {
-        """
-        {
-          "type": "home_banner",
-          "brand": "Bookie Partners",
-          "images": {
-            "hero": {
-              "1x": "https://cdn.example.com/hero.png",
-              "2x": "https://cdn.example.com/diana.k@example.org",
-              "3x": "https://cdn.example.com/james.b@example.com"
-            },
-            "icon": {
-              "1x": "https://cdn.example.com/icon.png",
-              "2x": "https://cdn.example.com/tina.r@example.net",
-              "3x": "https://cdn.example.com/fiona.g@example.net"
-            }
-          },
-          "headline": "Discover new reads",
-          "description": "Curated picks for your shelf.",
-          "cta": {
-            "title": "Shop now",
-            "action": {
-              "type": "url",
-              "value": "https://partners.example.com/shop"
-            }
-          }
-        }
-        """
-    }
 
     // MARK: - Fetch
 
-    func testFetchAd_successDecodesModel() async throws {
+    func testFetchAd_successDecodesBookieShapedModel() async throws {
         let http = MockHTTPClient()
-        await http.enqueue(statusCode: 200, json: sampleAdJSON)
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
 
         let client = makeClient(http: http)
         let ad = try await client.fetchAd(type: adType)
 
-        XCTAssertEqual(ad.type, adType)
-        XCTAssertEqual(ad.brand, "Bookie Partners")
-        XCTAssertEqual(ad.headline, "Discover new reads")
-        XCTAssertEqual(ad.description, "Curated picks for your shelf.")
-        XCTAssertEqual(ad.cta.title, "Shop now")
+        XCTAssertEqual(ad.campaignId, "sample-campaign-01")
+        XCTAssertEqual(ad.size, "banner")
+        XCTAssertEqual(ad.format, .banner)
+        XCTAssertEqual(ad.brand, "Sample Brand")
+        XCTAssertEqual(ad.backgroundColor, "#CC96FF")
+        XCTAssertEqual(ad.textColor, "#000000")
+        XCTAssertEqual(ad.headline, "Sample Brand")
+        XCTAssertEqual(ad.cta.title, "Learn more")
+        XCTAssertEqual(ad.cta.ctaButtonColor, "#FFFFFF")
+        XCTAssertEqual(ad.cta.ctaTitleColor, "#000000")
         XCTAssertEqual(ad.cta.action.type, .url)
-        XCTAssertEqual(ad.cta.action.value, "https://partners.example.com/shop")
-        XCTAssertEqual(ad.images.hero.url2x.absoluteString, "https://cdn.example.com/diana.k@example.org")
-        XCTAssertEqual(ad.images.icon.url3x.absoluteString, "https://cdn.example.com/fiona.g@example.net")
+        XCTAssertEqual(ad.cta.action.value, TestFixtures.sampleCTAValue)
+        XCTAssertEqual(
+            ad.images.hero.url(for: 2)?.absoluteString,
+            "https://cdn.example.com/diana.k@example.org"
+        )
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests[0].method, "GET")
-        XCTAssertEqual(requests[0].url?.absoluteString, "https://ads.example.com/ads/home_banner")
+        XCTAssertEqual(requests[0].url?.absoluteString, "https://ads.example.com/ads/banner")
         XCTAssertEqual(requests[0].headers["Accept-Language"], "en_US")
         XCTAssertEqual(requests[0].headers["X-API-Key"], "test-key")
     }
@@ -110,7 +87,7 @@ final class BetterAdsTests: XCTestCase {
         XCTAssertEqual(requests[0].method, "POST")
         XCTAssertEqual(
             requests[0].url?.absoluteString,
-            "https://ads.example.com/ads/home_banner/impressions"
+            "https://ads.example.com/ads/banner/impressions"
         )
         XCTAssertEqual(requests[0].headers["Content-Type"], "application/json")
         XCTAssertEqual(requests[0].headers["X-API-Key"], "test-key")
@@ -127,21 +104,21 @@ final class BetterAdsTests: XCTestCase {
         await http.enqueue(statusCode: 204, json: "")
 
         let client = makeClient(http: http)
-        client.trackClick(for: adType, ctaValue: "https://partners.example.com/shop")
+        client.trackClick(for: adType, ctaValue: TestFixtures.sampleCTAValue)
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests[0].method, "POST")
         XCTAssertEqual(
             requests[0].url?.absoluteString,
-            "https://ads.example.com/ads/home_banner/clicks"
+            "https://ads.example.com/ads/banner/clicks"
         )
 
         let json = try! XCTUnwrap(decodeJSONObject(requests[0].body))
         XCTAssertEqual(json["session_id"] as? String, "session-123")
         XCTAssertEqual(json["user_id"] as? String, "user-456")
         XCTAssertEqual(json["locale"] as? String, "en_US")
-        XCTAssertEqual(json["cta_value"] as? String, "https://partners.example.com/shop")
+        XCTAssertEqual(json["cta_value"] as? String, TestFixtures.sampleCTAValue)
     }
 
     func testTrackImpression_failureDoesNotThrow() async {
@@ -149,7 +126,6 @@ final class BetterAdsTests: XCTestCase {
         await http.enqueue(statusCode: 503, json: #"{"error":"unavailable"}"#)
 
         let client = makeClient(http: http)
-        // Must not throw / crash — analytics are best-effort.
         client.trackImpression(for: adType)
 
         let requests = await http.recordedRequests
@@ -159,15 +135,14 @@ final class BetterAdsTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeClient(http: MockHTTPClient) -> BetterAdsClient {
-        let configuration = BetterAdsConfiguration(
-            baseURL: baseURL,
-            apiKey: "test-key",
-            sessionID: "session-123",
-            userID: "user-456",
-            locale: Locale(identifier: "en_US")
-        )
-        return BetterAdsClient(
-            configuration: configuration,
+        BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                baseURL: baseURL,
+                apiKey: "test-key",
+                sessionID: "session-123",
+                userID: "user-456",
+                locale: Locale(identifier: "en_US")
+            ),
             httpClient: http,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )

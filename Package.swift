@@ -16,7 +16,10 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "BetterAds"
+            name: "BetterAds",
+            resources: [
+                .process("Resources"),
+            ]
         ),
         .testTarget(
             name: "BetterAdsTests",
