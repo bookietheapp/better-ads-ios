@@ -9,6 +9,9 @@ struct BannerAdLayout: View {
     private static let descriptionFontSize: CGFloat = 14
     private static let descriptionLineHeight: CGFloat = 20
     private static let descriptionTracking: CGFloat = -0.28
+    private static let descriptionMaxLines = 3
+    private static let descriptionMinHeight: CGFloat =
+        descriptionLineHeight * CGFloat(descriptionMaxLines)
 
     private var descriptionLineSpacing: CGFloat {
         // Approximate Canela medium line height for system serif.
@@ -53,7 +56,7 @@ struct BannerAdLayout: View {
     }
 
     private func leftColumn(maxTextWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             headlineView
 
             Text(
@@ -66,7 +69,12 @@ struct BannerAdLayout: View {
             )
             .tracking(Self.descriptionTracking)
             .lineSpacing(descriptionLineSpacing)
+            .lineLimit(Self.descriptionMaxLines)
+            .truncationMode(.tail)
+            // Take ideal height up to 3 lines — don't let the fixed banner compress to 2.
             .fixedSize(horizontal: false, vertical: true)
+            .frame(minHeight: Self.descriptionMinHeight, alignment: .topLeading)
+            .layoutPriority(1)
 
             Button(action: onCTA) {
                 Text(ad.cta.title)
@@ -82,7 +90,7 @@ struct BannerAdLayout: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 24)
+        .padding(.top, 16)
         .padding(.bottom, 16)
         .frame(maxWidth: maxTextWidth, alignment: .leading)
     }
@@ -90,14 +98,13 @@ struct BannerAdLayout: View {
     @ViewBuilder
     private var headlineView: some View {
         if let wordmarkURL = ad.images.icon.url(for: AdDisplayScale.current) {
+            // Keep a blank wordmark slot while loading / if the asset fails (e.g. SVG).
             AdRemoteImage(
                 url: wordmarkURL,
                 pointSize: CGSize(width: 109, height: 17),
                 placeholder: {
-                    Text(ad.headline)
-                        .font(AdTypography.serif(14))
-                        .foregroundStyle(textColor)
-                        .lineLimit(1)
+                    Color.clear
+                        .frame(width: 109, height: 17)
                 },
                 imageContent: { image in
                     image
@@ -108,11 +115,13 @@ struct BannerAdLayout: View {
             )
             .frame(height: 17, alignment: .leading)
             .accessibilityLabel(ad.headline)
-        } else {
+        } else if !ad.headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text(ad.headline)
                 .font(AdTypography.serif(14))
                 .foregroundStyle(textColor)
                 .lineLimit(1)
+        } else {
+            Color.clear.frame(height: 17)
         }
     }
 

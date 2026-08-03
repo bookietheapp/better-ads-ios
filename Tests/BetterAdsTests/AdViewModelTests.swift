@@ -79,10 +79,12 @@ final class AdViewModelTests: XCTestCase {
     private func makeClient(http: MockHTTPClient) -> BetterAdsClient {
         BetterAdsClient(
             configuration: BetterAdsConfiguration(
-                baseURL: baseURL,
                 apiKey: "test-key",
+                contentMode: .bookieGetAd,
+                baseURL: baseURL,
                 sessionID: "session-123",
                 userID: "user-456",
+                deviceID: "device-789",
                 locale: Locale(identifier: "en_US")
             ),
             httpClient: http,

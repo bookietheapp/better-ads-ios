@@ -2,26 +2,37 @@ import SwiftUI
 
 /// Ready-to-display ad view for a Bookie-parity format (`compact` / `banner` / `card`).
 ///
-/// Fetches, renders the matching layout, and tracks impression / click. Host apps
-/// may optionally observe those moments (e.g. Firebase bridge during migration).
+/// Lifecycle (all owned by the SDK — hosts only place this view):
+/// - Revalidates with the serve API when the view appears.
+/// - Keeps the current creative on screen while fetching (no flash).
+/// - The API decides whether to return the same or a new creative; UI swaps only
+///   when the payload changes.
+/// - Not tied to every SwiftUI body recomposition.
+///
+/// The SDK fetches, renders, tracks impression/click, and opens CTA destinations.
+/// Host callbacks are observation-only (e.g. Firebase bridge) — they do not own navigation.
 public struct BetterAdView: View {
     private let format: AdFormat
     private let explicitClient: BetterAdsClient?
-    private let onAction: ((AdCTAAction) -> Void)?
+    private let onClick: ((AdCTAAction) -> Void)?
     private let onImpression: ((AdModel) -> Void)?
 
     @Environment(\.betterAdsClient) private var environmentClient
 
     /// Creates an ad view that reads `BetterAdsClient` from the environment.
+    ///
+    /// - Parameters:
+    ///   - onImpression: Optional host observation after the SDK records an impression.
+    ///   - onClick: Optional host observation after the SDK records a click and opens the CTA.
     public init(
         format: AdFormat,
         onImpression: ((AdModel) -> Void)? = nil,
-        onAction: ((AdCTAAction) -> Void)? = nil
+        onClick: ((AdCTAAction) -> Void)? = nil
     ) {
         self.format = format
         self.explicitClient = nil
         self.onImpression = onImpression
-        self.onAction = onAction
+        self.onClick = onClick
     }
 
     /// Creates an ad view with an explicit client.
@@ -29,12 +40,27 @@ public struct BetterAdView: View {
         format: AdFormat,
         client: BetterAdsClient,
         onImpression: ((AdModel) -> Void)? = nil,
-        onAction: ((AdCTAAction) -> Void)? = nil
+        onClick: ((AdCTAAction) -> Void)? = nil
     ) {
         self.format = format
         self.explicitClient = client
         self.onImpression = onImpression
-        self.onAction = onAction
+        self.onClick = onClick
+    }
+
+    /// Backward-compatible alias — `onAction` is observation-only; the SDK still opens the CTA.
+    public init(
+        format: AdFormat,
+        client: BetterAdsClient,
+        onImpression: ((AdModel) -> Void)? = nil,
+        onAction: ((AdCTAAction) -> Void)?
+    ) {
+        self.init(
+            format: format,
+            client: client,
+            onImpression: onImpression,
+            onClick: onAction
+        )
     }
 
     public var body: some View {
@@ -44,9 +70,8 @@ public struct BetterAdView: View {
                     client: client,
                     format: format,
                     onImpression: onImpression,
-                    onAction: onAction
+                    onClick: onClick
                 )
-                .id(format.rawValue)
             } else {
                 Color.clear
                     .frame(height: 0)
@@ -66,20 +91,20 @@ public struct BetterAdView: View {
 private struct BetterAdContent: View {
     let format: AdFormat
     let onImpression: ((AdModel) -> Void)?
-    let onAction: ((AdCTAAction) -> Void)?
+    let onClick: ((AdCTAAction) -> Void)?
 
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: AdViewModel
-    @Environment(\.openURL) private var openURL
 
     init(
         client: BetterAdsClient,
         format: AdFormat,
         onImpression: ((AdModel) -> Void)?,
-        onAction: ((AdCTAAction) -> Void)?
+        onClick: ((AdCTAAction) -> Void)?
     ) {
         self.format = format
         self.onImpression = onImpression
-        self.onAction = onAction
+        self.onClick = onClick
         _viewModel = StateObject(
             wrappedValue: AdViewModel(client: client, type: AdType(format: format))
         )
@@ -104,8 +129,16 @@ private struct BetterAdContent: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .task {
-            await viewModel.loadIfNeeded()
+        // SDK-owned: revalidate on appear / foreground — not host refresh tokens.
+        .task(id: format) {
+            await viewModel.revalidate()
+        }
+        .onAppear {
+            Task { await viewModel.revalidate() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await viewModel.revalidate() }
         }
     }
 
@@ -125,20 +158,8 @@ private struct BetterAdContent: View {
 
     private func handleCTA() {
         guard let action = viewModel.handleClick() else { return }
-
-        if let onAction {
-            onAction(action)
-            return
-        }
-
-        switch action.type {
-        case .url:
-            if let url = URL(string: action.value) {
-                openURL(url)
-            }
-        case .deeplink:
-            break
-        }
+        AdActionHandler.open(action)
+        onClick?(action)
     }
 }
 

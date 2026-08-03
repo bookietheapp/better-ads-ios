@@ -21,6 +21,9 @@ struct URLSessionHTTPClient: HTTPClient {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: request)
+        } catch is CancellationError {
+            // Keep cancellation as-is so view `.task` teardown does not become a hard failure.
+            throw CancellationError()
         } catch {
             throw BetterAdsError.transport(error.localizedDescription)
         }

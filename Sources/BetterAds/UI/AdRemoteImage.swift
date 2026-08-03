@@ -14,18 +14,24 @@ struct AdRemoteImage<Placeholder: View, Content: View>: View {
     let placeholder: () -> Placeholder
     let imageContent: (Image) -> Content
 
-    @Environment(\.displayScale) private var displayScale
-
     var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case let .success(image):
-                imageContent(image)
-            case .failure:
-                placeholder()
-            case .empty:
-                placeholder()
-            @unknown default:
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case let .success(image):
+                        imageContent(image)
+                    case .failure:
+                        placeholder()
+                    case .empty:
+                        placeholder()
+                    @unknown default:
+                        placeholder()
+                    }
+                }
+                // Avoid implicit fade transitions when the host recomposes the slot.
+                .transaction { $0.animation = nil }
+            } else {
                 placeholder()
             }
         }

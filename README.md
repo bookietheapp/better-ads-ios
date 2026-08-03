@@ -1,71 +1,138 @@
 # Better Ads (iOS)
 
-Standalone Swift package (`BetterAds`) that returns **ready-to-display SwiftUI ad views** matching Bookie’s in-app placement ads, and reports impressions / clicks to a dedicated ads backend.
+Swift package (`BetterAds`) for host apps (starting with Bookie). The SDK returns **ready-to-display SwiftUI ad views** and owns:
 
-## Formats (Bookie parity)
+1. Creative load (fixture or remote)
+2. Impression / click reporting to the ads backend (when remote)
+3. Opening the CTA (Safari / deeplink)
 
-Aligned with Bookie `PlacementAdSize` + layouts:
+Host apps only configure a client, place `BetterAdView`, and optionally observe events (e.g. Firebase).
 
-| Format | Bookie view | Layout |
-|--------|-------------|--------|
-| `.compact` | `PlacementAdCompactView` | Row: 50×53 hero, wordmark/headline, description, capsule CTA; “Ad” chip |
-| `.banner` | `PlacementAdBannerView` | Fixed height 164; left copy (50% width) + 205×164 hero; “Ad” chip |
-| `.card` | `PlacementAdCardView` | Vertical: wordmark → 205×164 hero → centered title block → full-width CTA; “Advertisement” chip |
-| `.interstitial` | _(skipped)_ | No UI (same as Bookie) |
+**Platforms:** iOS 17+ (macOS 14 for `swift test` only).
 
-Creative payload mirrors Bookie `PlacementAdResponse` (`campaignId`, hex colors, CTA colors, hero/icon 1x/2x/3x, `*emphasis*` in description).
+## Install (SPM)
+
+### Local (spike)
+
+In Xcode → Package Dependencies → Add Local → select this folder, or in `Package.swift` / Xcode project:
+
+```text
+../../better-ads/better-ads-ios
+```
+
+Product: `BetterAds`.
+
+### Git
+
+```text
+git@github.com:eduardobookie/better-ads-ios.git
+```
+
+## Content modes
+
+| `BetterAdsContentMode` | Behavior |
+|------------------------|----------|
+| `.fixture` (**spike default**) | Built-in sample creatives. No network, no `baseURL`, no auth. Ads analytics POSTs are skipped. |
+| `.serveV1` (**current remote**) | SDK-owned serve endpoint (`size` + optional `app=` via `appName` while unauthenticated) |
+| `.bookieGetAd` | Legacy: `GET /getAd?size={format}` (+ optional Bearer via `BetterAdsAuthProviding`) — host `baseURL` |
+| `.dedicatedAPI` | Future: `GET /ads/{format}` — host `baseURL` |
+
+Hosts never configure the serve URL for `.serveV1`. Remote calls send `X-API-Key: {apiKey}` when non-empty; keep `apiKey` ready and drop `appName` once the key identifies the host.
+
+## Formats
+
+| `AdFormat` | Layout |
+|------------|--------|
+| `.compact` | Row: 50×53 hero, wordmark/headline, description, capsule CTA; “Ad” chip |
+| `.banner` | Fixed height 164; left copy + 205×164 hero; “Ad” chip |
+| `.card` | Vertical card with “Advertisement” chip |
+| `.interstitial` | No UI (skipped) |
+
+Payload shape matches Bookie `PlacementAdResponse` (`campaignId`, hex colors, CTA colors, hero/icon `1x`/`2x`/`3x`, `*emphasis*` in description).
 
 ## Usage
+
+### Spike / fixture (recommended today)
 
 ```swift
 import BetterAds
 import SwiftUI
 
-struct HomeView: View {
-    private let ads = BetterAdsClient(
-        configuration: BetterAdsConfiguration(
-            baseURL: URL(string: "https://ads.example.com")!,
-            apiKey: "YOUR_API_KEY",
-            sessionID: sessionIdentifier,
-            userID: currentUserID,
-            locale: .current
-        )
-    )
+enum AppAds {
+    static let client = BetterAdsClient.fixture(apiKey: "YOUR_BETTER_ADS_KEY")
+}
 
+struct HomeView: View {
     var body: some View {
         ScrollView {
-            BetterAdView(format: .banner) { action in
-                // Optional — required for deeplinks.
-                // If omitted, `.url` opens via SwiftUI `openURL`.
-                handle(action)
-            }
+            // Explicit client (Bookie host pattern)
+            BetterAdView(
+                format: .banner,
+                client: AppAds.client,
+                onImpression: { ad in
+                    // Optional host observation (e.g. Firebase) — do not open the CTA here
+                    _ = ad.campaignId
+                },
+                onClick: { action in
+                    // Optional host observation after the SDK opens the CTA
+                    _ = action.value
+                }
+            )
 
-            BetterAdView(format: .compact)
-            BetterAdView(format: .card)
+            BetterAdView(format: .compact, client: AppAds.client)
+            BetterAdView(format: .card, client: AppAds.client)
         }
-        .betterAdsClient(ads)
     }
 }
 ```
 
-### Tracking (owned by the view)
+### Environment client (alternative)
 
-| Event | When |
-|-------|------|
-| Impression | Loaded creative appears (`onAppear`) — once per view model |
-| Click | CTA tapped → analytics POST, then `onAction` / `openURL` |
+Inject once higher in the tree instead of passing `client:` on every view:
 
-Host apps should **not** fire ad analytics themselves.
+```swift
+ScrollView {
+    BetterAdView(format: .banner)
+    BetterAdView(format: .compact)
+}
+.betterAdsClient(AppAds.client)
+```
 
-## Visual review
+`BetterAdView` requires a client via `client:` **or** `.betterAdsClient(_:)`. Missing both asserts in debug and renders empty.
 
-Open `Package.swift` in Xcode and use `#Preview` on:
+### Remote (`serveV1`)
 
-- `CompactAdLayout`
-- `BannerAdLayout`
-- `CardAdLayout`
+```swift
+let client = BetterAdsClient(
+    configuration: BetterAdsConfiguration(
+        // Empty until the backend enforces auth; then omit appName — key identifies the app.
+        apiKey: "",
+        contentMode: .serveV1,
+        appName: "Bookie", // transitional; remove once API key auth ships
+        userID: userId, // optional; or call client.setUserID later
+        locale: .current
+    )
+)
 
-Fixtures use a neutral sample brand (no real advertiser).
+// On login / logout — only host identity concern:
+client.setUserID(loggedInUserId) // or nil when logged out / guest
+```
+
+The SDK owns `device_id` (persisted) and `session_id` (rotates on logout when you clear user id). See [`docs/IDENTITY_AND_ANALYTICS.md`](../docs/IDENTITY_AND_ANALYTICS.md).
+
+## What the SDK owns vs the host
+
+| Concern | Owner |
+|---------|--------|
+| Persist `device_id` / manage `session_id` | SDK |
+| Set `user_id` on auth (`setUserID`) | Host |
+| Fetch creative | SDK |
+| Render layout | SDK (`BetterAdView`) |
+| Ads-backend impression / click POST | SDK (no-op in `.fixture`) |
+| Open CTA (`.url` → `SFSafariViewController`, `.deeplink` → `UIApplication.open`) | SDK |
+| Host analytics (Firebase `impression` / `placement_ad_click`, etc.) | Host via `onImpression` / `onClick` only |
+
+Do **not** open ad URLs in host callbacks — observation only.
 
 ## Development
 
@@ -74,9 +141,4 @@ swift build
 swift test
 ```
 
-## Notes / gaps vs Bookie app
-
-1. **Fonts** — Bookie uses Canela + app design-system faces. The SDK uses system serif at the same sizes / tracking / line heights so **geometry matches**; swap in Bookie font providers later if pixel-perfect type is required.
-2. **Images** — SDK uses `AsyncImage`; Bookie uses `RemoteImage` with pixel-size hints. Visual result is equivalent for layout.
-3. **Auth / analytics backend** — dedicated ads service (`/ads/:type`, `/impressions`, `/clicks`); not Bookie’s Firebase `impression` / `placement_ad_click`.
-4. **Copy** — “Ad” / “Advertisement” localized in the package (`en` / `de` / `pt-BR`), matching Bookie intent.
+In Xcode, open `Package.swift` and use `#Preview` on the layout files under `Sources/BetterAds/UI/Formats/` (neutral “Sample Brand” fixture).
