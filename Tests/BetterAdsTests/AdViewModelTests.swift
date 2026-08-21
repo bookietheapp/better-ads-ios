@@ -25,7 +25,7 @@ final class AdViewModelTests: XCTestCase {
     func testImpression_trackedOnceOnAppear() async {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
-        await http.enqueue(statusCode: 204, json: "")
+        await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
         let client = makeClient(http: http)
         let viewModel = AdViewModel(client: client, type: adType)
 
@@ -35,7 +35,7 @@ final class AdViewModelTests: XCTestCase {
 
         let requests = await http.recordedRequests
         let impressionCalls = requests.filter {
-            $0.method == "POST" && $0.url?.path.hasSuffix("/impressions") == true
+            $0.method == "POST" && $0.url?.path.hasSuffix("/events") == true
         }
         XCTAssertEqual(impressionCalls.count, 1)
     }
@@ -43,7 +43,7 @@ final class AdViewModelTests: XCTestCase {
     func testClick_tracksAndReturnsAction() async {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
-        await http.enqueue(statusCode: 204, json: "")
+        await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
         let client = makeClient(http: http)
         let viewModel = AdViewModel(client: client, type: adType)
 
@@ -55,12 +55,13 @@ final class AdViewModelTests: XCTestCase {
 
         let requests = await http.recordedRequests
         let clickCalls = requests.filter {
-            $0.method == "POST" && $0.url?.path.hasSuffix("/clicks") == true
+            $0.method == "POST" && $0.url?.path.hasSuffix("/events") == true
         }
         XCTAssertEqual(clickCalls.count, 1)
 
         let json = try! XCTUnwrap(decodeJSONObject(clickCalls[0].body))
-        XCTAssertEqual(json["cta_value"] as? String, TestFixtures.sampleCTAValue)
+        let event = try! XCTUnwrap((json["events"] as? [[String: Any]])?.first)
+        XCTAssertEqual(event["cta_value"] as? String, TestFixtures.sampleCTAValue)
     }
 
     func testImpression_notTrackedBeforeLoad() async {
@@ -88,6 +89,8 @@ final class AdViewModelTests: XCTestCase {
                 locale: Locale(identifier: "en_US")
             ),
             httpClient: http,
+            eventStore: InMemoryAdEventStore(),
+            flushScheduler: SynchronousFlushScheduler.run,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
     }

@@ -16,6 +16,7 @@ public struct BetterAdView: View {
     private let explicitClient: BetterAdsClient?
     private let onClick: ((AdCTAAction) -> Void)?
     private let onImpression: ((AdModel) -> Void)?
+    private let onAvailabilityChanged: ((Bool) -> Void)?
 
     @Environment(\.betterAdsClient) private var environmentClient
 
@@ -27,12 +28,14 @@ public struct BetterAdView: View {
     public init(
         format: AdFormat,
         onImpression: ((AdModel) -> Void)? = nil,
-        onClick: ((AdCTAAction) -> Void)? = nil
+        onClick: ((AdCTAAction) -> Void)? = nil,
+        onAvailabilityChanged: ((Bool) -> Void)? = nil
     ) {
         self.format = format
         self.explicitClient = nil
         self.onImpression = onImpression
         self.onClick = onClick
+        self.onAvailabilityChanged = onAvailabilityChanged
     }
 
     /// Creates an ad view with an explicit client.
@@ -40,12 +43,14 @@ public struct BetterAdView: View {
         format: AdFormat,
         client: BetterAdsClient,
         onImpression: ((AdModel) -> Void)? = nil,
-        onClick: ((AdCTAAction) -> Void)? = nil
+        onClick: ((AdCTAAction) -> Void)? = nil,
+        onAvailabilityChanged: ((Bool) -> Void)? = nil
     ) {
         self.format = format
         self.explicitClient = client
         self.onImpression = onImpression
         self.onClick = onClick
+        self.onAvailabilityChanged = onAvailabilityChanged
     }
 
     /// Backward-compatible alias — `onAction` is observation-only; the SDK still opens the CTA.
@@ -53,13 +58,15 @@ public struct BetterAdView: View {
         format: AdFormat,
         client: BetterAdsClient,
         onImpression: ((AdModel) -> Void)? = nil,
-        onAction: ((AdCTAAction) -> Void)?
+        onAction: ((AdCTAAction) -> Void)?,
+        onAvailabilityChanged: ((Bool) -> Void)? = nil
     ) {
         self.init(
             format: format,
             client: client,
             onImpression: onImpression,
-            onClick: onAction
+            onClick: onAction,
+            onAvailabilityChanged: onAvailabilityChanged
         )
     }
 
@@ -70,7 +77,8 @@ public struct BetterAdView: View {
                     client: client,
                     format: format,
                     onImpression: onImpression,
-                    onClick: onClick
+                    onClick: onClick,
+                    onAvailabilityChanged: onAvailabilityChanged
                 )
             } else {
                 Color.clear
@@ -92,6 +100,7 @@ private struct BetterAdContent: View {
     let format: AdFormat
     let onImpression: ((AdModel) -> Void)?
     let onClick: ((AdCTAAction) -> Void)?
+    let onAvailabilityChanged: ((Bool) -> Void)?
 
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: AdViewModel
@@ -100,11 +109,13 @@ private struct BetterAdContent: View {
         client: BetterAdsClient,
         format: AdFormat,
         onImpression: ((AdModel) -> Void)?,
-        onClick: ((AdCTAAction) -> Void)?
+        onClick: ((AdCTAAction) -> Void)?,
+        onAvailabilityChanged: ((Bool) -> Void)?
     ) {
         self.format = format
         self.onImpression = onImpression
         self.onClick = onClick
+        self.onAvailabilityChanged = onAvailabilityChanged
         _viewModel = StateObject(
             wrappedValue: AdViewModel(client: client, type: AdType(format: format))
         )
@@ -116,7 +127,8 @@ private struct BetterAdContent: View {
             case .idle, .loading:
                 Color.clear
                     .frame(maxWidth: .infinity)
-                    .frame(height: format == .banner ? AdLayoutMetrics.bannerHeight : 0)
+                    .frame(minHeight: AdLayoutMetrics.loadingPlaceholderHeight(for: format))
+                    .accessibilityHidden(true)
             case .failed:
                 EmptyView()
             case let .loaded(ad):
@@ -129,12 +141,31 @@ private struct BetterAdContent: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .onAppear {
+            switch viewModel.state {
+            case .loaded:
+                onAvailabilityChanged?(true)
+            case .failed:
+                onAvailabilityChanged?(false)
+            case .idle, .loading:
+                break
+            }
+        }
+        .onChange(of: viewModel.state) { _, state in
+            switch state {
+            case .loaded:
+                onAvailabilityChanged?(true)
+            case .failed:
+                onAvailabilityChanged?(false)
+            case .idle:
+                Task { await viewModel.revalidate() }
+            case .loading:
+                break
+            }
+        }
         // SDK-owned: revalidate on appear / foreground — not host refresh tokens.
         .task(id: format) {
             await viewModel.revalidate()
-        }
-        .onAppear {
-            Task { await viewModel.revalidate() }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }

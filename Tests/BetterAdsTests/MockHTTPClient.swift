@@ -55,6 +55,18 @@ actor MockHTTPClient: HTTPClient {
     }
 }
 
+/// Runs async flush work inline so tests can await HTTP side effects.
+enum SynchronousFlushScheduler {
+    static func run(_ operation: @escaping @Sendable () async -> Void) {
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            await operation()
+            semaphore.signal()
+        }
+        semaphore.wait()
+    }
+}
+
 /// Runs analytics operations inline so tests can await completion.
 struct ImmediateAnalyticsTaskRunner: AnalyticsTaskRunner {
     func run(_ operation: @escaping @Sendable () async -> Void) {

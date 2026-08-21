@@ -37,7 +37,9 @@ git@github.com:eduardobookie/better-ads-ios.git
 | `.bookieGetAd` | Legacy: `GET /getAd?size={format}` (+ optional Bearer via `BetterAdsAuthProviding`) — host `baseURL` |
 | `.dedicatedAPI` | Future: `GET /ads/{format}` — host `baseURL` |
 
-Hosts never configure the serve URL for `.serveV1`. Remote calls send `X-API-Key: {apiKey}` when non-empty; keep `apiKey` ready and drop `appName` once the key identifies the host.
+Hosts never configure the serve URL for `.serveV1`. Remote calls send `X-Api-Key: {apiKey}` (App API key from NativeOS Portal, `nos_…`). Keep `appName` aligned with the Portal App name until the backend is key-only.
+
+Ad events are batched to `POST /api/v1/events` (1–500 per request). The SDK flushes on enqueue, every ~30s, and on app background. See [`docs/IDENTITY_AND_ANALYTICS.md`](../docs/IDENTITY_AND_ANALYTICS.md) and [`docs/BOOKIE_INTEGRATION.md`](../docs/BOOKIE_INTEGRATION.md).
 
 ## Formats
 
@@ -100,16 +102,15 @@ ScrollView {
 
 `BetterAdView` requires a client via `client:` **or** `.betterAdsClient(_:)`. Missing both asserts in debug and renders empty.
 
-### Remote (`serveV1`)
+### Remote (`serveV1` — production)
 
 ```swift
 let client = BetterAdsClient(
     configuration: BetterAdsConfiguration(
-        // Empty until the backend enforces auth; then omit appName — key identifies the app.
-        apiKey: "",
+        apiKey: BookieSecrets.nativeOSAppAPIKey, // nos_… from NativeOS Portal
         contentMode: .serveV1,
-        appName: "Bookie", // transitional; remove once API key auth ships
-        userID: userId, // optional; or call client.setUserID later
+        appName: "Bookie", // must match Portal App; remove once key-only auth ships
+        userID: userId,    // optional; or call client.setUserID later
         locale: .current
     )
 )
@@ -128,7 +129,7 @@ The SDK owns `device_id` (persisted) and `session_id` (rotates on logout when yo
 | Set `user_id` on auth (`setUserID`) | Host |
 | Fetch creative | SDK |
 | Render layout | SDK (`BetterAdView`) |
-| Ads-backend impression / click POST | SDK (no-op in `.fixture`) |
+| Ads-backend impression / click events | SDK → batched `POST /api/v1/events` (no-op in `.fixture`) |
 | Open CTA (`.url` → `SFSafariViewController`, `.deeplink` → `UIApplication.open`) | SDK |
 | Host analytics (Firebase `impression` / `placement_ad_click`, etc.) | Host via `onImpression` / `onClick` only |
 

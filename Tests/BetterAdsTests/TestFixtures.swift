@@ -8,7 +8,7 @@ enum TestFixtures {
     static var sampleAdJSON: String {
         """
         {
-          "campaignId": "sample-campaign-01",
+          "campaignId": "42",
           "size": "banner",
           "brand": "Sample Brand",
           "backgroundColor": "#CC96FF",

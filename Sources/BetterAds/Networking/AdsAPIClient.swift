@@ -54,6 +54,12 @@ struct AdsAPIClient: @unchecked Sendable {
             queryItems: queryItems
         )
 
+        #if DEBUG
+        if let url = request.url?.absoluteString {
+            print("[BetterAds] GET \(url)")
+        }
+        #endif
+
         let (data, response) = try await httpClient.send(request)
 
         switch response.statusCode {
@@ -71,42 +77,31 @@ struct AdsAPIClient: @unchecked Sendable {
         }
     }
 
-    func postImpression(type: AdType) async throws {
-        let id = identity.snapshot
-        let body = AnalyticsEnvelope(
-            deviceID: id.deviceID,
-            sessionID: id.sessionID,
-            userID: id.userID,
-            locale: configuration.locale.identifier,
-            ctaValue: nil
-        )
-        try await post(path: "/ads/\(type.rawValue)/impressions", body: body)
-    }
-
-    func postClick(type: AdType, ctaValue: String) async throws {
-        let id = identity.snapshot
-        let body = AnalyticsEnvelope(
-            deviceID: id.deviceID,
-            sessionID: id.sessionID,
-            userID: id.userID,
-            locale: configuration.locale.identifier,
-            ctaValue: ctaValue
-        )
-        try await post(path: "/ads/\(type.rawValue)/clicks", body: body)
-    }
-
-    // MARK: - Private
-
-    private func post(path: String, body: AnalyticsEnvelope) async throws {
-        var request = try await makeRequest(path: path, method: .post)
+    func postEvents(_ events: [AdEvent]) async throws -> EventsPostResult {
+        let body = EventsRequestBody(events: events)
+        var request = try await makeRequest(path: BetterAdsEndpoints.eventsPath, method: .post)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
 
         let (data, response) = try await httpClient.send(request)
-        guard (200 ... 299).contains(response.statusCode) else {
-            let responseBody = String(data: data, encoding: .utf8)
-            throw BetterAdsError.httpStatus(code: response.statusCode, body: responseBody)
+        switch response.statusCode {
+        case 200 ... 299:
+            do {
+                let decoded = try decoder.decode(EventsAPIResponse.self, from: data)
+                return EventsPostResult.from(decoded)
+            } catch {
+                throw BetterAdsError.decodingFailed(String(describing: error))
+            }
+        default:
+            let body = String(data: data, encoding: .utf8)
+            throw BetterAdsError.httpStatus(code: response.statusCode, body: body)
         }
+    }
+
+    // MARK: - Private
+
+    private struct EventsRequestBody: Encodable {
+        let events: [AdEvent]
     }
 
     private func makeRequest(
@@ -153,31 +148,5 @@ struct AdsAPIClient: @unchecked Sendable {
         }
 
         return request
-    }
-}
-
-/// Analytics request body for impressions / clicks.
-struct AnalyticsEnvelope: Encodable, Equatable {
-    let deviceID: String?
-    let sessionID: String?
-    let userID: String?
-    let locale: String
-    let ctaValue: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case deviceID = "device_id"
-        case sessionID = "session_id"
-        case userID = "user_id"
-        case locale
-        case ctaValue = "cta_value"
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(deviceID, forKey: .deviceID)
-        try container.encodeIfPresent(sessionID, forKey: .sessionID)
-        try container.encodeIfPresent(userID, forKey: .userID)
-        try container.encode(locale, forKey: .locale)
-        try container.encodeIfPresent(ctaValue, forKey: .ctaValue)
     }
 }

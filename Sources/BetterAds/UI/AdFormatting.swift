@@ -65,6 +65,17 @@ enum AdLayoutMetrics {
     static let advertisementLabelBackgroundOpacity: CGFloat = 0.72
     static let cornerRadius: CGFloat = 12
     static let bannerHeight: CGFloat = 164
+
+    /// Non-zero height while serve is in flight so lazy host lists (e.g. SwiftUI `LazyVStack`)
+    /// still mount the slot and run `.task` / `revalidate()`.
+    static func loadingPlaceholderHeight(for format: AdFormat) -> CGFloat {
+        switch format {
+        case .banner: return bannerHeight
+        case .compact: return 72
+        case .card: return 200
+        case .interstitial: return 0
+        }
+    }
 }
 
 /// Fallback typography approximating Bookie Canela / design-system sizes.

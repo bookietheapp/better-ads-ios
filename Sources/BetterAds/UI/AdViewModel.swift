@@ -63,9 +63,14 @@ final class AdViewModel: ObservableObject {
             let fresh = try await client.fetchAd(type: type)
             applyServeResult(previous: previous, fresh: fresh)
         } catch is CancellationError {
-            // Lazy stacks often cancel the first task (0-height placeholder). Do not
-            // permanently fail — leave idle so a later appear can fetch.
-            if !hadContent { state = .idle }
+            // Lazy stacks may cancel after fetch; creative is still in the client cache.
+            if !hadContent {
+                if let cached = client.cachedAd(for: type) {
+                    state = .loaded(cached)
+                } else {
+                    state = .idle
+                }
+            }
         } catch {
             if !hadContent {
                 state = .failed((error as? BetterAdsError)?.localizedDescription ?? error.localizedDescription)
@@ -83,9 +88,9 @@ final class AdViewModel: ObservableObject {
     /// - Returns: `true` when an impression was newly tracked.
     @discardableResult
     func trackImpressionIfNeeded() -> Bool {
-        guard case .loaded = state, !didTrackImpression else { return false }
+        guard case .loaded = state, !didTrackImpression, let ad else { return false }
         didTrackImpression = true
-        client.trackImpression(for: type)
+        client.trackImpression(campaignId: ad.campaignId)
         return true
     }
 
@@ -93,7 +98,7 @@ final class AdViewModel: ObservableObject {
     @discardableResult
     func handleClick() -> AdCTAAction? {
         guard let ad else { return nil }
-        client.trackClick(for: type, ctaValue: ad.cta.action.value)
+        client.trackClick(campaignId: ad.campaignId, ctaValue: ad.cta.action.value)
         return ad.cta.action
     }
 

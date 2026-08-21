@@ -15,7 +15,7 @@ final class BetterAdsTests: XCTestCase {
         let client = makeClient(http: http)
         let ad = try await client.fetchAd(type: adType)
 
-        XCTAssertEqual(ad.campaignId, "sample-campaign-01")
+        XCTAssertEqual(ad.campaignId, "42")
         XCTAssertEqual(ad.size, "banner")
         XCTAssertEqual(ad.format, .banner)
         XCTAssertEqual(ad.brand, "Sample Brand")
@@ -139,8 +139,8 @@ final class BetterAdsTests: XCTestCase {
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
 
-        client.trackImpression(for: adType)
-        client.trackClick(for: adType, ctaValue: TestFixtures.sampleCTAValue)
+        client.trackImpression(campaignId: "42")
+        client.trackClick(campaignId: "42", ctaValue: TestFixtures.sampleCTAValue)
 
         let requests = await http.recordedRequests
         XCTAssertTrue(requests.isEmpty)
@@ -181,57 +181,71 @@ final class BetterAdsTests: XCTestCase {
 
     // MARK: - Analytics
 
+    private let eventsSuccessJSON = #"{"ok":true,"accepted":1,"rejected":[]}"#
+
     func testTrackImpression_postsCorrectPayload() async {
         let http = MockHTTPClient()
-        await http.enqueue(statusCode: 204, json: "")
+        await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
 
         let client = makeClient(http: http)
-        client.trackImpression(for: adType)
+        client.trackImpression(campaignId: "42")
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests[0].method, "POST")
         XCTAssertEqual(
             requests[0].url?.absoluteString,
-            "https://ads.example.com/ads/banner/impressions"
+            "https://ads.example.com/api/v1/events"
         )
         XCTAssertEqual(requests[0].headers["Content-Type"], "application/json")
         XCTAssertEqual(requests[0].headers["X-API-Key"], "test-key")
 
         let json = try! XCTUnwrap(decodeJSONObject(requests[0].body))
-        XCTAssertEqual(json["device_id"] as? String, "device-789")
-        XCTAssertEqual(json["session_id"] as? String, "session-123")
-        XCTAssertEqual(json["user_id"] as? String, "user-456")
-        XCTAssertEqual(json["locale"] as? String, "en_US")
-        XCTAssertNil(json["cta_value"])
+        let events = try! XCTUnwrap(json["events"] as? [[String: Any]])
+        XCTAssertEqual(events.count, 1)
+        let event = try! XCTUnwrap(events[0])
+        XCTAssertEqual(event["type"] as? String, "impression")
+        XCTAssertEqual(event["campaign_id"] as? Int, 42)
+        XCTAssertEqual(event["device_id"] as? String, "device-789")
+        XCTAssertEqual(event["session_id"] as? String, "session-123")
+        XCTAssertEqual(event["user_id"] as? String, "user-456")
+        XCTAssertEqual(event["locale"] as? String, "en_US")
+        XCTAssertEqual(event["sdk_version"] as? String, BetterAdsSDK.version)
+        XCTAssertNotNil(event["event_id"] as? String)
+        XCTAssertNotNil(event["occurred_at"] as? String)
+        XCTAssertNil(event["cta_value"])
     }
 
     func testTrackClick_postsCorrectPayload() async {
         let http = MockHTTPClient()
-        await http.enqueue(statusCode: 204, json: "")
+        await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
 
         let client = makeClient(http: http)
-        client.trackClick(for: adType, ctaValue: TestFixtures.sampleCTAValue)
+        client.trackClick(campaignId: "42", ctaValue: TestFixtures.sampleCTAValue)
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests[0].method, "POST")
         XCTAssertEqual(
             requests[0].url?.absoluteString,
-            "https://ads.example.com/ads/banner/clicks"
+            "https://ads.example.com/api/v1/events"
         )
 
         let json = try! XCTUnwrap(decodeJSONObject(requests[0].body))
-        XCTAssertEqual(json["device_id"] as? String, "device-789")
-        XCTAssertEqual(json["session_id"] as? String, "session-123")
-        XCTAssertEqual(json["user_id"] as? String, "user-456")
-        XCTAssertEqual(json["locale"] as? String, "en_US")
-        XCTAssertEqual(json["cta_value"] as? String, TestFixtures.sampleCTAValue)
+        let events = try! XCTUnwrap(json["events"] as? [[String: Any]])
+        let event = try! XCTUnwrap(events[0])
+        XCTAssertEqual(event["type"] as? String, "click")
+        XCTAssertEqual(event["campaign_id"] as? Int, 42)
+        XCTAssertEqual(event["device_id"] as? String, "device-789")
+        XCTAssertEqual(event["session_id"] as? String, "session-123")
+        XCTAssertEqual(event["user_id"] as? String, "user-456")
+        XCTAssertEqual(event["locale"] as? String, "en_US")
+        XCTAssertEqual(event["cta_value"] as? String, TestFixtures.sampleCTAValue)
     }
 
     func testTrackImpression_loggedOut_omitsUserIdKeepsDeviceId() async {
         let http = MockHTTPClient()
-        await http.enqueue(statusCode: 204, json: "")
+        await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
 
         let client = BetterAdsClient(
             configuration: BetterAdsConfiguration(
@@ -244,21 +258,24 @@ final class BetterAdsTests: XCTestCase {
                 locale: Locale(identifier: "en_US")
             ),
             httpClient: http,
+            eventStore: InMemoryAdEventStore(),
+            flushScheduler: SynchronousFlushScheduler.run,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
-        client.trackImpression(for: adType)
+        client.trackImpression(campaignId: "42")
 
         let requests = await http.recordedRequests
         let json = try! XCTUnwrap(decodeJSONObject(requests[0].body))
-        XCTAssertEqual(json["device_id"] as? String, "device-789")
-        XCTAssertEqual(json["session_id"] as? String, "session-123")
-        XCTAssertNil(json["user_id"])
+        let event = try! XCTUnwrap((json["events"] as? [[String: Any]])?.first)
+        XCTAssertEqual(event["device_id"] as? String, "device-789")
+        XCTAssertEqual(event["session_id"] as? String, "session-123")
+        XCTAssertNil(event["user_id"])
     }
 
     func testSetUserID_updatesPayloadAndRotatesSessionOnLogout() async {
         let http = MockHTTPClient()
-        await http.enqueue(statusCode: 204, json: "")
-        await http.enqueue(statusCode: 204, json: "")
+        await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
+        await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
 
         let client = BetterAdsClient(
             configuration: BetterAdsConfiguration(
@@ -272,19 +289,21 @@ final class BetterAdsTests: XCTestCase {
                 locale: Locale(identifier: "en_US")
             ),
             httpClient: http,
+            eventStore: InMemoryAdEventStore(),
+            flushScheduler: SynchronousFlushScheduler.run,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
 
-        client.trackImpression(for: adType)
+        client.trackImpression(campaignId: "42")
         var requests = await http.recordedRequests
-        let loggedIn = try! XCTUnwrap(decodeJSONObject(requests[0].body))
+        let loggedIn = try! XCTUnwrap((decodeJSONObject(requests[0].body)["events"] as? [[String: Any]])?.first)
         XCTAssertEqual(loggedIn["user_id"] as? String, "user-456")
         let sessionWhileLoggedIn = try! XCTUnwrap(loggedIn["session_id"] as? String)
 
         client.setUserID(nil)
-        client.trackImpression(for: adType)
+        client.trackImpression(campaignId: "42")
         requests = await http.recordedRequests
-        let loggedOut = try! XCTUnwrap(decodeJSONObject(requests[1].body))
+        let loggedOut = try! XCTUnwrap((decodeJSONObject(requests[1].body)["events"] as? [[String: Any]])?.first)
         XCTAssertNil(loggedOut["user_id"])
         XCTAssertEqual(loggedOut["device_id"] as? String, "device-789")
         let sessionAfterLogout = try! XCTUnwrap(loggedOut["session_id"] as? String)
@@ -295,11 +314,36 @@ final class BetterAdsTests: XCTestCase {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 503, json: #"{"error":"unavailable"}"#)
 
-        let client = makeClient(http: http)
-        client.trackImpression(for: adType)
+        let store = InMemoryAdEventStore()
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "test-key",
+                contentMode: .bookieGetAd,
+                baseURL: baseURL,
+                sessionID: "session-123",
+                userID: "user-456",
+                deviceID: "device-789",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            eventStore: store,
+            flushScheduler: SynchronousFlushScheduler.run,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+        client.trackImpression(campaignId: "42")
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(store.load().count, 1)
+    }
+
+    func testTrackImpression_skipsInvalidCampaignId() async {
+        let http = MockHTTPClient()
+        let client = makeClient(http: http)
+        client.trackImpression(campaignId: "sample-campaign-01")
+
+        let requests = await http.recordedRequests
+        XCTAssertTrue(requests.isEmpty)
     }
 
     // MARK: - Helpers
@@ -316,6 +360,8 @@ final class BetterAdsTests: XCTestCase {
                 locale: Locale(identifier: "en_US")
             ),
             httpClient: http,
+            eventStore: InMemoryAdEventStore(),
+            flushScheduler: SynchronousFlushScheduler.run,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
     }
