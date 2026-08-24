@@ -9,12 +9,12 @@ struct BannerAdLayout: View {
     private static let descriptionFontSize: CGFloat = 14
     private static let descriptionLineHeight: CGFloat = 20
     private static let descriptionTracking: CGFloat = -0.28
-    private static let descriptionMaxLines = 3
-    private static let descriptionMinHeight: CGFloat =
-        descriptionLineHeight * CGFloat(descriptionMaxLines)
+    private static let horizontalPadding: CGFloat = 16
+    private static let heroWidth: CGFloat = 205
+    /// Headline and body copy stay in the left half; the CTA may extend over the hero.
+    private static let textColumnWidthFraction: CGFloat = 0.5
 
     private var descriptionLineSpacing: CGFloat {
-        // Approximate Canela medium line height for system serif.
         max(0, Self.descriptionLineHeight - (Self.descriptionFontSize * 1.2))
     }
 
@@ -42,11 +42,11 @@ struct BannerAdLayout: View {
                     heroImage
                 }
 
-                leftColumn(maxTextWidth: geometry.size.width * 0.5)
+                contentColumn(totalWidth: geometry.size.width)
 
                 AdAdvertisementLabel(style: .short)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .zIndex(1)
+                    .zIndex(2)
             }
         }
         .frame(maxWidth: .infinity)
@@ -55,32 +55,34 @@ struct BannerAdLayout: View {
         .clipShape(RoundedRectangle(cornerRadius: AdLayoutMetrics.cornerRadius, style: .continuous))
     }
 
-    private func leftColumn(maxTextWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            headlineView
+    private func contentColumn(totalWidth: CGFloat) -> some View {
+        let textMaxWidth = totalWidth * Self.textColumnWidthFraction - Self.horizontalPadding
+        let ctaMaxWidth = totalWidth - Self.horizontalPadding * 2
 
-            Text(
-                AdFormatting.attributedDescription(
-                    ad.description,
-                    baseColor: textColor,
-                    baseFont: AdTypography.serif(Self.descriptionFontSize),
-                    emphasisFont: AdTypography.serifItalic(Self.descriptionFontSize)
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
+                headlineView
+
+                Text(
+                    AdFormatting.attributedDescription(
+                        ad.description,
+                        baseColor: textColor,
+                        baseFont: AdTypography.serif(Self.descriptionFontSize),
+                        emphasisFont: AdTypography.serifItalic(Self.descriptionFontSize)
+                    )
                 )
-            )
-            .tracking(Self.descriptionTracking)
-            .lineSpacing(descriptionLineSpacing)
-            .lineLimit(Self.descriptionMaxLines)
-            .truncationMode(.tail)
-            // Take ideal height up to 3 lines — don't let the fixed banner compress to 2.
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(minHeight: Self.descriptionMinHeight, alignment: .topLeading)
-            .layoutPriority(1)
+                .tracking(Self.descriptionTracking)
+                .lineSpacing(descriptionLineSpacing)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: textMaxWidth, alignment: .leading)
 
             Button(action: onCTA) {
                 Text(ad.cta.title)
                     .font(AdTypography.bodyHeavy(size: 13))
                     .lineSpacing(4)
                     .foregroundStyle(buttonTitleColor)
+                    .lineLimit(1)
                     .padding(.horizontal, 16)
                     .frame(minWidth: 102)
                     .frame(height: 31)
@@ -88,11 +90,13 @@ struct BannerAdLayout: View {
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: ctaMaxWidth, alignment: .leading)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
+        .padding(.horizontal, Self.horizontalPadding)
+        .padding(.top, 24)
         .padding(.bottom, 16)
-        .frame(maxWidth: maxTextWidth, alignment: .leading)
+        .frame(maxWidth: ctaMaxWidth, alignment: .leading)
+        .zIndex(1)
     }
 
     @ViewBuilder
@@ -128,19 +132,20 @@ struct BannerAdLayout: View {
     private var heroImage: some View {
         AdRemoteImage(
             url: ad.images.hero.url(for: AdDisplayScale.current),
-            pointSize: CGSize(width: 205, height: 164),
+            pointSize: CGSize(width: Self.heroWidth, height: AdLayoutMetrics.bannerHeight),
             placeholder: {
                 Color.clear
-                    .frame(width: 205, height: 164)
+                    .frame(width: Self.heroWidth, height: AdLayoutMetrics.bannerHeight)
             },
             imageContent: { image in
                 image
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 205, height: 164)
+                    .frame(width: Self.heroWidth, height: AdLayoutMetrics.bannerHeight)
                     .clipped()
             }
         )
+        .frame(width: Self.heroWidth, height: AdLayoutMetrics.bannerHeight)
     }
 }
 
