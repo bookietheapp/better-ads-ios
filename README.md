@@ -12,20 +12,24 @@ Host apps only configure a client, place `BetterAdView`, and optionally observe 
 
 ## Install (SPM)
 
-### Local (spike)
+### Git (recommended for host apps)
+
+Repository: [github.com/bookietheapp/better-ads-ios](https://github.com/bookietheapp/better-ads-ios)
+
+In Xcode → **Package Dependencies** → **Add Package** → paste:
+
+```text
+https://github.com/bookietheapp/better-ads-ios.git
+```
+
+Product: `BetterAds`. Pin to a **version tag** (e.g. `0.1.0`) or `main` while iterating.
+
+### Local (SDK development)
 
 In Xcode → Package Dependencies → Add Local → select this folder, or in `Package.swift` / Xcode project:
 
 ```text
 ../../better-ads/better-ads-ios
-```
-
-Product: `BetterAds`.
-
-### Git
-
-```text
-git@github.com:eduardobookie/better-ads-ios.git
 ```
 
 ## Content modes
