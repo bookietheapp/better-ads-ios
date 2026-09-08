@@ -47,6 +47,10 @@ public struct BetterAdsConfiguration: Sendable, Equatable {
     /// Locale sent as `Accept-Language` and on analytics events.
     public let locale: Locale
 
+    /// When `true`, adds `isTestEnv=true` to Serve so NativeOS can return test-only ads.
+    /// Host apps should set this only for debug / staging builds — never in production.
+    public let isTestEnv: Bool
+
     public init(
         apiKey: String = "",
         contentMode: BetterAdsContentMode = .fixture,
@@ -55,7 +59,8 @@ public struct BetterAdsConfiguration: Sendable, Equatable {
         sessionID: String? = nil,
         userID: String? = nil,
         deviceID: String? = nil,
-        locale: Locale = .current
+        locale: Locale = .current,
+        isTestEnv: Bool = false
     ) {
         self.apiKey = apiKey
         self.contentMode = contentMode
@@ -65,6 +70,7 @@ public struct BetterAdsConfiguration: Sendable, Equatable {
         self.userID = userID
         self.deviceID = deviceID
         self.locale = locale
+        self.isTestEnv = isTestEnv
     }
 
     /// Resolved HTTP base URL for the active content mode.

@@ -39,6 +39,9 @@ struct AdsAPIClient: @unchecked Sendable {
             if let appName = configuration.appName, !appName.isEmpty {
                 items.insert(URLQueryItem(name: "app", value: appName), at: 0)
             }
+            if configuration.isTestEnv {
+                items.append(URLQueryItem(name: "isTestEnv", value: "true"))
+            }
             queryItems = items
         case .dedicatedAPI:
             path = "/ads/\(type.rawValue)"

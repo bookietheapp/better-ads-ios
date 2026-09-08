@@ -86,6 +86,31 @@ final class BetterAdsTests: XCTestCase {
         XCTAssertEqual(requests[0].headers["X-Api-Key"], "future-key")
     }
 
+    func testFetchAd_serveV1_includesIsTestEnvWhenEnabled() async throws {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US"),
+                isTestEnv: true
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+        _ = try await client.fetchAd(type: adType)
+
+        let requests = await http.recordedRequests
+        XCTAssertEqual(
+            requests[0].url?.absoluteString,
+            BetterAdsEndpoints.serveV1BaseURL.appendingPathComponent("api/v1/serve")
+                .absoluteString + "?app=Bookie&size=banner&isTestEnv=true"
+        )
+    }
+
     func testFetchAd_serveV1_ignoresHostBaseURL() async throws {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
