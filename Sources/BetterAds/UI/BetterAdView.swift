@@ -9,7 +9,7 @@ import SwiftUI
 ///   when the payload changes.
 /// - Not tied to every SwiftUI body recomposition.
 ///
-/// The SDK fetches, renders, tracks impression/click, and opens CTA destinations.
+/// The SDK fetches, renders the hero image, tracks impression/click, and opens `ctaLink`.
 /// Host callbacks are observation-only (e.g. Firebase bridge) — they do not own navigation.
 public struct BetterAdView: View {
     private let format: AdFormat
@@ -24,7 +24,7 @@ public struct BetterAdView: View {
     ///
     /// - Parameters:
     ///   - onImpression: Optional host observation after the SDK records an impression.
-    ///   - onClick: Optional host observation after the SDK records a click and opens the CTA.
+    ///   - onClick: Optional host observation after the SDK records a click and opens `ctaLink`.
     public init(
         format: AdFormat,
         onImpression: ((AdModel) -> Void)? = nil,
@@ -176,12 +176,8 @@ private struct BetterAdContent: View {
     @ViewBuilder
     private func layout(for ad: AdModel) -> some View {
         switch format {
-        case .compact:
-            CompactAdLayout(ad: ad, onCTA: handleCTA)
-        case .banner:
-            BannerAdLayout(ad: ad, onCTA: handleCTA)
-        case .card:
-            CardAdLayout(ad: ad, onCTA: handleCTA)
+        case .compact, .banner, .card:
+            HeroAdLayout(ad: ad, format: format, onCTA: handleCTA)
         case .interstitial:
             EmptyView()
         }
@@ -195,16 +191,16 @@ private struct BetterAdContent: View {
 }
 
 #Preview("Compact") {
-    CompactAdLayout(ad: .previewFixture(size: .compact), onCTA: {})
+    HeroAdLayout(ad: .previewFixture(size: .compact), format: .compact, onCTA: {})
         .padding()
 }
 
 #Preview("Banner") {
-    BannerAdLayout(ad: .previewFixture(size: .banner), onCTA: {})
+    HeroAdLayout(ad: .previewFixture(size: .banner), format: .banner, onCTA: {})
         .padding()
 }
 
 #Preview("Card") {
-    CardAdLayout(ad: .previewFixture(size: .card), onCTA: {})
+    HeroAdLayout(ad: .previewFixture(size: .card), format: .card, onCTA: {})
         .padding()
 }

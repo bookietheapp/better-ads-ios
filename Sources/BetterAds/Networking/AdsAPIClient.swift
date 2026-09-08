@@ -140,7 +140,7 @@ struct AdsAPIClient: @unchecked Sendable {
         )
 
         if !configuration.apiKey.isEmpty {
-            request.setValue(configuration.apiKey, forHTTPHeaderField: "X-API-Key")
+            request.setValue(configuration.apiKey, forHTTPHeaderField: "X-Api-Key")
         }
 
         if let token = await authProvider?.bearerAccessToken(), !token.isEmpty {

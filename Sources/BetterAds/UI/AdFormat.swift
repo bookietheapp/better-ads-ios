@@ -1,13 +1,12 @@
 import Foundation
 
-/// Ad creative format / size.
+/// Ad creative format / size — NativeOS Template name (`compact` / `banner` / `card`).
 ///
-/// Matches Bookie iOS `PlacementAdSize` (`compact` / `banner` / `card` / `interstitial`).
-/// Used as the `:type` path segment for `GET /ads/:type` and analytics routes.
+/// Used as the `size` query on `GET /api/v1/serve`. There is no interstitial template.
 public enum AdFormat: String, Hashable, Sendable, Codable, CaseIterable {
     case compact
     case banner
     case card
-    /// Modeled for API parity with Bookie; no SDK layout is rendered.
+    /// Kept for source compatibility; Serve has no interstitial and no layout is rendered.
     case interstitial
 }

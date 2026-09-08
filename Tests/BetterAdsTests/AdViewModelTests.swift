@@ -18,7 +18,7 @@ final class AdViewModelTests: XCTestCase {
         guard case let .loaded(ad) = viewModel.state else {
             return XCTFail("Expected loaded state, got \(viewModel.state)")
         }
-        XCTAssertEqual(ad.brand, "Sample Brand")
+        XCTAssertEqual(ad.adId, "42")
         XCTAssertEqual(ad.format, .banner)
     }
 

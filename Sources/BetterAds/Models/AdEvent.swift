@@ -9,7 +9,7 @@ enum AdEventType: String, Codable, Sendable, Equatable {
 struct AdEvent: Sendable, Equatable {
     let eventId: UUID
     let type: AdEventType
-    let campaignId: Int
+    let adId: Int
     let occurredAt: Date
     let deviceId: String
     let sessionId: String
@@ -21,7 +21,7 @@ struct AdEvent: Sendable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case eventId = "event_id"
         case type
-        case campaignId = "campaign_id"
+        case adId = "ad_id"
         case occurredAt = "occurred_at"
         case deviceId = "device_id"
         case sessionId = "session_id"
@@ -34,7 +34,7 @@ struct AdEvent: Sendable, Equatable {
     init(
         eventId: UUID = UUID(),
         type: AdEventType,
-        campaignId: Int,
+        adId: Int,
         occurredAt: Date = Date(),
         deviceId: String,
         sessionId: String,
@@ -45,7 +45,7 @@ struct AdEvent: Sendable, Equatable {
     ) {
         self.eventId = eventId
         self.type = type
-        self.campaignId = campaignId
+        self.adId = adId
         self.occurredAt = occurredAt
         self.deviceId = deviceId
         self.sessionId = sessionId
@@ -67,7 +67,7 @@ struct AdEvent: Sendable, Equatable {
         }
         eventId = parsedEventId
         type = try container.decode(AdEventType.self, forKey: .type)
-        campaignId = try container.decode(Int.self, forKey: .campaignId)
+        adId = try container.decode(Int.self, forKey: .adId)
         let occurredAtString = try container.decode(String.self, forKey: .occurredAt)
         guard let parsedDate = AdEventFormatters.iso8601.date(from: occurredAtString) else {
             throw DecodingError.dataCorruptedError(
@@ -92,7 +92,7 @@ extension AdEvent: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(eventId.uuidString.lowercased(), forKey: .eventId)
         try container.encode(type, forKey: .type)
-        try container.encode(campaignId, forKey: .campaignId)
+        try container.encode(adId, forKey: .adId)
         try container.encode(
             AdEventFormatters.iso8601.string(from: occurredAt),
             forKey: .occurredAt
@@ -114,14 +114,3 @@ enum AdEventFormatters {
     }()
 }
 
-extension AdModel {
-    /// Parses Serve `campaignId` for analytics. Returns `nil` when not a positive integer.
-    var campaignIdAsInt: Int? {
-        guard let value = Int(campaignId.trimmingCharacters(in: .whitespacesAndNewlines)),
-              value > 0
-        else {
-            return nil
-        }
-        return value
-    }
-}

@@ -46,7 +46,7 @@ final class AdViewModel: ObservableObject {
     ///
     /// - Keeps the current creative visible while fetching (no flash).
     /// - Updates state only when the API returns a different payload.
-    /// - Resets impression eligibility when `campaignId` changes.
+    /// - Resets impression eligibility when `adId` changes.
     func revalidate() async {
         guard !isRevalidating else { return }
         isRevalidating = true
@@ -83,14 +83,14 @@ final class AdViewModel: ObservableObject {
         await revalidate()
     }
 
-    /// Called when the rendered ad content appears. Fires at most once per campaign
+    /// Called when the rendered ad content appears. Fires at most once per `adId`
     /// for this view model instance.
     /// - Returns: `true` when an impression was newly tracked.
     @discardableResult
     func trackImpressionIfNeeded() -> Bool {
         guard case .loaded = state, !didTrackImpression, let ad else { return false }
         didTrackImpression = true
-        client.trackImpression(campaignId: ad.campaignId)
+        client.trackImpression(adId: ad.adId)
         return true
     }
 
@@ -98,13 +98,13 @@ final class AdViewModel: ObservableObject {
     @discardableResult
     func handleClick() -> AdCTAAction? {
         guard let ad else { return nil }
-        client.trackClick(campaignId: ad.campaignId, ctaValue: ad.cta.action.value)
-        return ad.cta.action
+        client.trackClick(adId: ad.adId, ctaValue: ad.ctaLink)
+        return ad.ctaAction
     }
 
     private func applyServeResult(previous: AdModel?, fresh: AdModel) {
         guard previous != fresh else { return }
-        if previous?.campaignId != fresh.campaignId {
+        if previous?.adId != fresh.adId {
             didTrackImpression = false
         }
         state = .loaded(fresh)

@@ -16,14 +16,14 @@ public enum BetterAdsContentMode: String, Sendable, Equatable {
 ///
 /// ``serveV1`` owns its fetch URL inside the SDK — hosts never pass a base URL for that mode.
 /// ``baseURL`` is only for legacy `.bookieGetAd` / `.dedicatedAPI`.
-/// ``apiKey`` is sent as `X-API-Key` when non-empty (optional today; required once the backend enforces auth).
+/// ``apiKey`` is sent as `X-Api-Key` when non-empty (required for Serve and Events).
 ///
 /// Identity defaults (recommended):
 /// - omit ``deviceID`` → SDK persists an install UUID
 /// - omit ``sessionID`` → SDK generates / rotates session on logout via ``BetterAdsClient/setUserID(_:)``
 /// - set ``userID`` when logged in, or call ``BetterAdsClient/setUserID(_:)`` later
 public struct BetterAdsConfiguration: Sendable, Equatable {
-    /// Host-issued Better Ads API key (`X-API-Key` on remote calls). Empty until the backend requires it.
+    /// NativeOS App API key (`X-Api-Key` on Serve and Events). Empty until configured.
     public let apiKey: String
 
     /// Legacy remote base URL for `.bookieGetAd` / `.dedicatedAPI`. Ignored for `.serveV1` / `.fixture`.
@@ -44,7 +44,7 @@ public struct BetterAdsConfiguration: Sendable, Equatable {
     /// Optional override. When `nil`, the SDK persists an install-scoped device id.
     public let deviceID: String?
 
-    /// Locale used for localized ad copy (`Accept-Language` + analytics payload).
+    /// Locale sent as `Accept-Language` and on analytics events.
     public let locale: Locale
 
     public init(

@@ -8,25 +8,20 @@ final class BetterAdsTests: XCTestCase {
 
     // MARK: - Fetch
 
-    func testFetchAd_successDecodesBookieShapedModel() async throws {
+    func testFetchAd_successDecodesServeDesign() async throws {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
 
         let client = makeClient(http: http)
         let ad = try await client.fetchAd(type: adType)
 
-        XCTAssertEqual(ad.campaignId, "42")
+        XCTAssertEqual(ad.adId, "42")
+        XCTAssertEqual(ad.campaignId, "10")
         XCTAssertEqual(ad.size, "banner")
         XCTAssertEqual(ad.format, .banner)
-        XCTAssertEqual(ad.brand, "Sample Brand")
-        XCTAssertEqual(ad.backgroundColor, "#CC96FF")
-        XCTAssertEqual(ad.textColor, "#000000")
-        XCTAssertEqual(ad.headline, "Sample Brand")
-        XCTAssertEqual(ad.cta.title, "Learn more")
-        XCTAssertEqual(ad.cta.ctaButtonColor, "#FFFFFF")
-        XCTAssertEqual(ad.cta.ctaTitleColor, "#000000")
-        XCTAssertEqual(ad.cta.action.type, .url)
-        XCTAssertEqual(ad.cta.action.value, TestFixtures.sampleCTAValue)
+        XCTAssertEqual(ad.ctaLink, TestFixtures.sampleCTAValue)
+        XCTAssertEqual(ad.ctaAction.type, .url)
+        XCTAssertEqual(ad.ctaAction.value, TestFixtures.sampleCTAValue)
         XCTAssertEqual(
             ad.images.hero.url(for: 2)?.absoluteString,
             "https://cdn.example.com/diana.k@example.org"
@@ -37,7 +32,7 @@ final class BetterAdsTests: XCTestCase {
         XCTAssertEqual(requests[0].method, "GET")
         XCTAssertEqual(requests[0].url?.absoluteString, "https://ads.example.com/getAd?size=banner")
         XCTAssertEqual(requests[0].headers["Accept-Language"], "en_US")
-        XCTAssertEqual(requests[0].headers["X-API-Key"], "test-key")
+        XCTAssertEqual(requests[0].headers["X-Api-Key"], "test-key")
     }
 
     func testFetchAd_serveV1_includesAppAndSizeQuery() async throws {
@@ -63,7 +58,7 @@ final class BetterAdsTests: XCTestCase {
             BetterAdsEndpoints.serveV1BaseURL.appendingPathComponent("api/v1/serve")
                 .absoluteString + "?app=Bookie&size=banner"
         )
-        XCTAssertNil(requests[0].headers["X-API-Key"])
+        XCTAssertNil(requests[0].headers["X-Api-Key"])
     }
 
     func testFetchAd_serveV1_omitsAppWhenAppNameNil_sendsApiKey() async throws {
@@ -88,7 +83,7 @@ final class BetterAdsTests: XCTestCase {
             BetterAdsEndpoints.serveV1BaseURL.appendingPathComponent("api/v1/serve")
                 .absoluteString + "?size=banner"
         )
-        XCTAssertEqual(requests[0].headers["X-API-Key"], "future-key")
+        XCTAssertEqual(requests[0].headers["X-Api-Key"], "future-key")
     }
 
     func testFetchAd_serveV1_ignoresHostBaseURL() async throws {
@@ -125,7 +120,7 @@ final class BetterAdsTests: XCTestCase {
 
         let ad = try await client.fetchAd(format: .banner)
         XCTAssertEqual(ad.format, .banner)
-        XCTAssertEqual(ad.brand, "Sample Brand")
+        XCTAssertEqual(ad.ctaLink, "https://example.com/offer")
 
         let requests = await http.recordedRequests
         XCTAssertTrue(requests.isEmpty)
@@ -139,8 +134,8 @@ final class BetterAdsTests: XCTestCase {
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
 
-        client.trackImpression(campaignId: "42")
-        client.trackClick(campaignId: "42", ctaValue: TestFixtures.sampleCTAValue)
+        client.trackImpression(adId: "42")
+        client.trackClick(adId: "42", ctaValue: TestFixtures.sampleCTAValue)
 
         let requests = await http.recordedRequests
         XCTAssertTrue(requests.isEmpty)
@@ -188,7 +183,7 @@ final class BetterAdsTests: XCTestCase {
         await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
 
         let client = makeClient(http: http)
-        client.trackImpression(campaignId: "42")
+        client.trackImpression(adId: "42")
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
@@ -198,14 +193,14 @@ final class BetterAdsTests: XCTestCase {
             "https://ads.example.com/api/v1/events"
         )
         XCTAssertEqual(requests[0].headers["Content-Type"], "application/json")
-        XCTAssertEqual(requests[0].headers["X-API-Key"], "test-key")
+        XCTAssertEqual(requests[0].headers["X-Api-Key"], "test-key")
 
         let json = try! XCTUnwrap(decodeJSONObject(requests[0].body))
         let events = try! XCTUnwrap(json["events"] as? [[String: Any]])
         XCTAssertEqual(events.count, 1)
         let event = try! XCTUnwrap(events[0])
         XCTAssertEqual(event["type"] as? String, "impression")
-        XCTAssertEqual(event["campaign_id"] as? Int, 42)
+        XCTAssertEqual(event["ad_id"] as? Int, 42)
         XCTAssertEqual(event["device_id"] as? String, "device-789")
         XCTAssertEqual(event["session_id"] as? String, "session-123")
         XCTAssertEqual(event["user_id"] as? String, "user-456")
@@ -221,7 +216,7 @@ final class BetterAdsTests: XCTestCase {
         await http.enqueue(statusCode: 200, json: eventsSuccessJSON)
 
         let client = makeClient(http: http)
-        client.trackClick(campaignId: "42", ctaValue: TestFixtures.sampleCTAValue)
+        client.trackClick(adId: "42", ctaValue: TestFixtures.sampleCTAValue)
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
@@ -235,7 +230,7 @@ final class BetterAdsTests: XCTestCase {
         let events = try! XCTUnwrap(json["events"] as? [[String: Any]])
         let event = try! XCTUnwrap(events[0])
         XCTAssertEqual(event["type"] as? String, "click")
-        XCTAssertEqual(event["campaign_id"] as? Int, 42)
+        XCTAssertEqual(event["ad_id"] as? Int, 42)
         XCTAssertEqual(event["device_id"] as? String, "device-789")
         XCTAssertEqual(event["session_id"] as? String, "session-123")
         XCTAssertEqual(event["user_id"] as? String, "user-456")
@@ -262,7 +257,7 @@ final class BetterAdsTests: XCTestCase {
             flushScheduler: SynchronousFlushScheduler.run,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
-        client.trackImpression(campaignId: "42")
+        client.trackImpression(adId: "42")
 
         let requests = await http.recordedRequests
         let json = try! XCTUnwrap(decodeJSONObject(requests[0].body))
@@ -294,14 +289,14 @@ final class BetterAdsTests: XCTestCase {
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
 
-        client.trackImpression(campaignId: "42")
+        client.trackImpression(adId: "42")
         var requests = await http.recordedRequests
         let loggedIn = try! XCTUnwrap((decodeJSONObject(requests[0].body)["events"] as? [[String: Any]])?.first)
         XCTAssertEqual(loggedIn["user_id"] as? String, "user-456")
         let sessionWhileLoggedIn = try! XCTUnwrap(loggedIn["session_id"] as? String)
 
         client.setUserID(nil)
-        client.trackImpression(campaignId: "42")
+        client.trackImpression(adId: "42")
         requests = await http.recordedRequests
         let loggedOut = try! XCTUnwrap((decodeJSONObject(requests[1].body)["events"] as? [[String: Any]])?.first)
         XCTAssertNil(loggedOut["user_id"])
@@ -330,17 +325,17 @@ final class BetterAdsTests: XCTestCase {
             flushScheduler: SynchronousFlushScheduler.run,
             analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
         )
-        client.trackImpression(campaignId: "42")
+        client.trackImpression(adId: "42")
 
         let requests = await http.recordedRequests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(store.load().count, 1)
     }
 
-    func testTrackImpression_skipsInvalidCampaignId() async {
+    func testTrackImpression_skipsInvalidAdId() async {
         let http = MockHTTPClient()
         let client = makeClient(http: http)
-        client.trackImpression(campaignId: "sample-campaign-01")
+        client.trackImpression(adId: "sample-campaign-01")
 
         let requests = await http.recordedRequests
         XCTAssertTrue(requests.isEmpty)

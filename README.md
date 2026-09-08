@@ -47,14 +47,14 @@ Ad events are batched to `POST /api/v1/events` (1–500 per request). The SDK fl
 
 ## Formats
 
-| `AdFormat` | Layout |
+| `AdFormat` | Template 1x frame (logical px) |
 |------------|--------|
-| `.compact` | Row: 50×53 hero, wordmark/headline, description, capsule CTA; “Ad” chip |
-| `.banner` | Fixed height 164; left copy + 205×164 hero; “Ad” chip |
-| `.card` | Vertical card with “Advertisement” chip |
-| `.interstitial` | No UI (skipped) |
+| `.compact` | 329 × 51 hero image; “Ad” chip |
+| `.banner` | 345 × 164 hero image; “Ad” chip |
+| `.card` | 336 × 443 hero image; “Advertisement” chip |
+| `.interstitial` | No UI (Serve has no interstitial template) |
 
-Payload shape matches Bookie `PlacementAdResponse` (`campaignId`, hex colors, CTA colors, hero/icon `1x`/`2x`/`3x`, `*emphasis*` in description).
+Serve returns a slim Design: `adId`, `campaignId`, `size`, `images.hero` (`1x` / `2x` / `3x`), and `ctaLink`. The SDK renders the hero as the entire ad and opens `ctaLink` on tap. Do not overlay headline, description, brand, or a CTA button.
 
 ## Usage
 
@@ -77,10 +77,10 @@ struct HomeView: View {
                 client: AppAds.client,
                 onImpression: { ad in
                     // Optional host observation (e.g. Firebase) — do not open the CTA here
-                    _ = ad.campaignId
+                    _ = ad.adId
                 },
                 onClick: { action in
-                    // Optional host observation after the SDK opens the CTA
+                    // Optional host observation after the SDK opens ctaLink
                     _ = action.value
                 }
             )
@@ -134,7 +134,7 @@ The SDK owns `device_id` (persisted) and `session_id` (rotates on logout when yo
 | Fetch creative | SDK |
 | Render layout | SDK (`BetterAdView`) |
 | Ads-backend impression / click events | SDK → batched `POST /api/v1/events` (no-op in `.fixture`) |
-| Open CTA (`.url` → `SFSafariViewController`, `.deeplink` → `UIApplication.open`) | SDK |
+| Open CTA (`ctaLink` → `SFSafariViewController` for http(s), otherwise `UIApplication.open`) | SDK |
 | Host analytics (Firebase `impression` / `placement_ad_click`, etc.) | Host via `onImpression` / `onClick` only |
 
 Do **not** open ad URLs in host callbacks — observation only.
@@ -146,4 +146,4 @@ swift build
 swift test
 ```
 
-In Xcode, open `Package.swift` and use `#Preview` on the layout files under `Sources/BetterAds/UI/Formats/` (neutral “Sample Brand” fixture).
+In Xcode, open `Package.swift` and use `#Preview` on `HeroAdLayout` under `Sources/BetterAds/UI/Formats/`.

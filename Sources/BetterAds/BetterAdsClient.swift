@@ -144,17 +144,17 @@ public final class BetterAdsClient: @unchecked Sendable {
 
     /// Reports an impression. Best-effort and non-blocking — never throws.
     /// Skipped in fixture mode (no ads analytics backend yet).
-    func trackImpression(campaignId: String) {
+    func trackImpression(adId: String) {
         guard contentMode != .fixture else { return }
-        guard let campaignIdInt = parseCampaignId(campaignId) else {
-            logger.warning("Skipping impression — invalid campaign_id: \(campaignId, privacy: .public)")
+        guard let adIdInt = AdModel.parsePositiveInt(adId) else {
+            logger.warning("Skipping impression — invalid ad_id: \(adId, privacy: .public)")
             return
         }
         analyticsTaskRunner.run { [eventQueue, identity, configuration] in
             let id = identity.snapshot
             let event = AdEvent(
                 type: .impression,
-                campaignId: campaignIdInt,
+                adId: adIdInt,
                 deviceId: id.deviceID,
                 sessionId: id.sessionID,
                 userId: id.userID,
@@ -164,19 +164,19 @@ public final class BetterAdsClient: @unchecked Sendable {
         }
     }
 
-    /// Reports a CTA click. Best-effort and non-blocking — never throws.
+    /// Reports a Design tap. Best-effort and non-blocking — never throws.
     /// Skipped in fixture mode (no ads analytics backend yet).
-    func trackClick(campaignId: String, ctaValue: String) {
+    func trackClick(adId: String, ctaValue: String) {
         guard contentMode != .fixture else { return }
-        guard let campaignIdInt = parseCampaignId(campaignId) else {
-            logger.warning("Skipping click — invalid campaign_id: \(campaignId, privacy: .public)")
+        guard let adIdInt = AdModel.parsePositiveInt(adId) else {
+            logger.warning("Skipping click — invalid ad_id: \(adId, privacy: .public)")
             return
         }
         analyticsTaskRunner.run { [eventQueue, identity, configuration] in
             let id = identity.snapshot
             let event = AdEvent(
                 type: .click,
-                campaignId: campaignIdInt,
+                adId: adIdInt,
                 deviceId: id.deviceID,
                 sessionId: id.sessionID,
                 userId: id.userID,
@@ -185,15 +185,6 @@ public final class BetterAdsClient: @unchecked Sendable {
             )
             eventQueue.enqueue(event)
         }
-    }
-
-    private func parseCampaignId(_ raw: String) -> Int? {
-        guard let value = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
-              value > 0
-        else {
-            return nil
-        }
-        return value
     }
 }
 
