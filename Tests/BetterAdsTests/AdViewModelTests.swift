@@ -2,11 +2,11 @@ import Foundation
 import XCTest
 @testable import BetterAds
 
-@MainActor
 final class AdViewModelTests: XCTestCase {
     private let adType = TestFixtures.bannerAdType
     private let baseURL = URL(string: "https://ads.example.com")!
 
+    @MainActor
     func testLoad_fetchesAndExposesAd() async throws {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
@@ -22,6 +22,7 @@ final class AdViewModelTests: XCTestCase {
         XCTAssertEqual(ad.format, .banner)
     }
 
+    @MainActor
     func testImpression_trackedOnceOnAppear() async {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
@@ -40,6 +41,7 @@ final class AdViewModelTests: XCTestCase {
         XCTAssertEqual(impressionCalls.count, 1)
     }
 
+    @MainActor
     func testClick_tracksAndReturnsAction() async {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
@@ -64,6 +66,7 @@ final class AdViewModelTests: XCTestCase {
         XCTAssertEqual(event["cta_value"] as? String, TestFixtures.sampleCTAValue)
     }
 
+    @MainActor
     func testImpression_notTrackedBeforeLoad() async {
         let http = MockHTTPClient()
         let client = makeClient(http: http)

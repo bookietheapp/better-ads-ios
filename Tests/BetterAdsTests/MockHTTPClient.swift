@@ -9,7 +9,12 @@ actor MockHTTPClient: HTTPClient {
         let body: Data?
     }
 
-    private var handlers: [(URLRequest) async throws -> (Data, HTTPURLResponse)] = []
+    private enum EnqueuedResponse {
+        case success(statusCode: Int, data: Data, headerFields: [String: String]?)
+        case failure(Error)
+    }
+
+    private var responses: [EnqueuedResponse] = []
     private(set) var recordedRequests: [RecordedRequest] = []
 
     func enqueue(
@@ -17,22 +22,13 @@ actor MockHTTPClient: HTTPClient {
         json: String,
         headerFields: [String: String]? = ["Content-Type": "application/json"]
     ) {
-        let data = Data(json.utf8)
-        handlers.append { request in
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: statusCode,
-                httpVersion: "HTTP/1.1",
-                headerFields: headerFields
-            )!
-            return (data, response)
-        }
+        responses.append(
+            .success(statusCode: statusCode, data: Data(json.utf8), headerFields: headerFields)
+        )
     }
 
     func enqueueError(_ error: Error) {
-        handlers.append { _ in
-            throw error
-        }
+        responses.append(.failure(error))
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -46,12 +42,22 @@ actor MockHTTPClient: HTTPClient {
             )
         )
 
-        guard !handlers.isEmpty else {
+        guard !responses.isEmpty else {
             throw BetterAdsError.transport("MockHTTPClient has no enqueued responses")
         }
 
-        let handler = handlers.removeFirst()
-        return try await handler(request)
+        switch responses.removeFirst() {
+        case let .success(statusCode, data, headerFields):
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: statusCode,
+                httpVersion: "HTTP/1.1",
+                headerFields: headerFields
+            )!
+            return (data, response)
+        case let .failure(error):
+            throw error
+        }
     }
 }
 
