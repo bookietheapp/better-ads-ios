@@ -142,10 +142,7 @@ private struct BetterAdContent: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                Color.clear
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: AdLayoutMetrics.loadingPlaceholderHeight(for: format))
-                    .accessibilityHidden(true)
+                AdSkeletonView(format: format)
             case .failed:
                 EmptyView()
             case let .loaded(ad):
@@ -219,5 +216,10 @@ private struct BetterAdContent: View {
 
 #Preview("Card") {
     HeroAdLayout(ad: .previewFixture(size: .card), format: .card, onCTA: {})
+        .padding()
+}
+
+#Preview("Banner skeleton") {
+    AdSkeletonView(format: .banner)
         .padding()
 }

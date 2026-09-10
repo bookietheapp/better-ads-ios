@@ -17,7 +17,7 @@ struct HeroAdLayout: View {
                     url: ad.images.hero.url(for: AdDisplayScale.current),
                     pointSize: frameSize,
                     placeholder: {
-                        Color.clear
+                        AdSkeletonFill()
                             .frame(width: frameSize.width, height: frameSize.height)
                     },
                     imageContent: { image in
