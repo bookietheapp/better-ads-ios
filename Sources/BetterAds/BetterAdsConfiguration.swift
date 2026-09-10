@@ -6,7 +6,7 @@ public enum BetterAdsContentMode: String, Sendable, Equatable {
     case fixture
     /// Interim: `GET /getAd?size={format}` (legacy Bookie Cloud Function shape).
     case bookieGetAd
-    /// Current ads backend: `GET /api/v1/serve?size={format}` (+ optional `app=` while unauthenticated).
+    /// Current ads backend: `GET /api/v1/serve?size={format}` (+ optional `app=` / `externalAdId=`).
     case serveV1
     /// Future dedicated ads API: `GET /ads/{format}`.
     case dedicatedAPI

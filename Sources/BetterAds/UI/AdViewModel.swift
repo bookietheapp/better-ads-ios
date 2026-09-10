@@ -18,28 +18,35 @@ final class AdViewModel: ObservableObject {
 
     private let client: BetterAdsClient
     private let type: AdType
+    private let externalAdId: String?
     private var didTrackImpression = false
     private var isRevalidating = false
 
-    init(client: BetterAdsClient, type: AdType) {
+    init(client: BetterAdsClient, type: AdType, externalAdId: String? = nil) {
         self.client = client
         self.type = type
+        self.externalAdId = ExternalAdId.normalize(externalAdId)
         // Paint cached creative immediately so remounts don't flash a blank loading slot.
-        if let cached = client.cachedAd(for: type) {
+        if let cached = client.cachedAd(for: type, externalAdId: self.externalAdId) {
             self.state = .loaded(cached)
         }
     }
 
     /// Test / preview seam for a preloaded model (skips network).
-    init(client: BetterAdsClient, type: AdType, preloadedAd: AdModel) {
+    init(client: BetterAdsClient, type: AdType, preloadedAd: AdModel, externalAdId: String? = nil) {
         self.client = client
         self.type = type
+        self.externalAdId = ExternalAdId.normalize(externalAdId)
         self.state = .loaded(preloadedAd)
     }
 
     var ad: AdModel? {
         if case let .loaded(ad) = state { return ad }
         return nil
+    }
+
+    var placementIdentity: String {
+        AdResponseCache.key(type: type, externalAdId: externalAdId)
     }
 
     /// Asks the serve API whether this slot should keep or replace its creative.
@@ -60,20 +67,25 @@ final class AdViewModel: ObservableObject {
         }
 
         do {
-            let fresh = try await client.fetchAd(type: type)
+            let fresh = try await client.fetchAd(type: type, externalAdId: externalAdId)
             applyServeResult(previous: previous, fresh: fresh)
         } catch is CancellationError {
             // Lazy stacks may cancel after fetch; creative is still in the client cache.
             if !hadContent {
-                if let cached = client.cachedAd(for: type) {
+                if let cached = client.cachedAd(for: type, externalAdId: externalAdId) {
                     state = .loaded(cached)
                 } else {
                     state = .idle
                 }
             }
         } catch {
-            if !hadContent {
-                state = .failed((error as? BetterAdsError)?.localizedDescription ?? error.localizedDescription)
+            let message = (error as? BetterAdsError)?.localizedDescription ?? error.localizedDescription
+            // Keyed 404 is a definitive miss — hide the slot. Do not keep a previous
+            // creative and do not retry as unkeyed Serve.
+            if externalAdId != nil, Self.isNoEligibleAd(error) {
+                state = .failed(message)
+            } else if !hadContent {
+                state = .failed(message)
             }
         }
     }
@@ -108,5 +120,15 @@ final class AdViewModel: ObservableObject {
             didTrackImpression = false
         }
         state = .loaded(fresh)
+    }
+
+    private static func isNoEligibleAd(_ error: Error) -> Bool {
+        guard let error = error as? BetterAdsError else { return false }
+        switch error {
+        case .unknownAdType, .httpStatus(code: 404, body: _):
+            return true
+        default:
+            return false
+        }
     }
 }

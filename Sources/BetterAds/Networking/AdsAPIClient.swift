@@ -25,9 +25,10 @@ struct AdsAPIClient: @unchecked Sendable {
         self.decoder = decoder
     }
 
-    func fetchAd(type: AdType) async throws -> AdModel {
+    func fetchAd(type: AdType, externalAdId: String? = nil) async throws -> AdModel {
         let path: String
         let queryItems: [URLQueryItem]
+        let keyedId = ExternalAdId.normalize(externalAdId)
         switch configuration.contentMode {
         case .bookieGetAd:
             path = "/getAd"
@@ -38,6 +39,9 @@ struct AdsAPIClient: @unchecked Sendable {
             // Transitional: backend resolves the app from API key once auth ships.
             if let appName = configuration.appName, !appName.isEmpty {
                 items.insert(URLQueryItem(name: "app", value: appName), at: 0)
+            }
+            if let keyedId {
+                items.append(URLQueryItem(name: "externalAdId", value: keyedId))
             }
             if configuration.isTestEnv {
                 items.append(URLQueryItem(name: "isTestEnv", value: "true"))

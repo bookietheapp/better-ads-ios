@@ -5,20 +5,20 @@ import Foundation
 /// Host apps should not implement this — the SDK owns loading. Kept internal for
 /// HTTP vs fixture switching and tests.
 protocol BetterAdsContentProviding: Sendable {
-    func fetchAd(format: AdFormat) async throws -> AdModel
+    func fetchAd(format: AdFormat, externalAdId: String?) async throws -> AdModel
 }
 
 struct HTTPBetterAdsContentProvider: BetterAdsContentProviding {
     let api: AdsAPIClient
 
-    func fetchAd(format: AdFormat) async throws -> AdModel {
-        try await api.fetchAd(type: AdType(format: format))
+    func fetchAd(format: AdFormat, externalAdId: String?) async throws -> AdModel {
+        try await api.fetchAd(type: AdType(format: format), externalAdId: externalAdId)
     }
 }
 
 /// Returns built-in sample creatives (no network) for spike / offline review.
 struct FixtureBetterAdsContentProvider: BetterAdsContentProviding {
-    func fetchAd(format: AdFormat) async throws -> AdModel {
+    func fetchAd(format: AdFormat, externalAdId: String?) async throws -> AdModel {
         if format == .interstitial {
             throw BetterAdsError.unknownAdType(AdType(format: format))
         }

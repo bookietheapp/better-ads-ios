@@ -120,26 +120,55 @@ public final class BetterAdsClient: @unchecked Sendable {
         identity.setUserID(userID)
     }
 
-    /// Last successfully fetched creative for `type`, if any (process memory).
-    func cachedAd(for type: AdType) -> AdModel? {
-        adCache.ad(for: type)
+    /// Last successfully fetched creative for `type` + optional keyed id, if any (process memory).
+    func cachedAd(for type: AdType, externalAdId: String? = nil) -> AdModel? {
+        adCache.ad(for: type, externalAdId: externalAdId)
     }
 
     /// Fetches ad content for the given placement type / format raw value.
-    public func fetchAd(type: AdType) async throws -> AdModel {
-        let ad: AdModel
-        if let format = AdFormat(rawValue: type.rawValue) {
-            ad = try await contentProvider.fetchAd(format: format)
-        } else {
-            ad = try await api.fetchAd(type: type)
+    ///
+    /// Pass `externalAdId` for keyed Serve. A keyed 404 / empty result is surfaced as
+    /// ``BetterAdsError/unknownAdType(_:)`` — the SDK does **not** retry as unkeyed Serve.
+    public func fetchAd(type: AdType, externalAdId: String? = nil) async throws -> AdModel {
+        let keyedId = ExternalAdId.normalize(externalAdId)
+        do {
+            let ad: AdModel
+            if let format = AdFormat(rawValue: type.rawValue) {
+                ad = try await contentProvider.fetchAd(format: format, externalAdId: keyedId)
+            } else {
+                ad = try await api.fetchAd(type: type, externalAdId: keyedId)
+            }
+            adCache.store(ad, for: type, externalAdId: keyedId)
+            return ad
+        } catch {
+            if keyedId != nil, Self.isNoEligibleAd(error) {
+                adCache.remove(for: type, externalAdId: keyedId)
+            }
+            throw error
         }
-        adCache.store(ad, for: type)
-        return ad
     }
 
     /// Fetches ad content for a known format.
-    public func fetchAd(format: AdFormat) async throws -> AdModel {
-        try await fetchAd(type: AdType(format: format))
+    ///
+    /// Pass `externalAdId` to request a specific Publisher-owned ad. On keyed miss the
+    /// error is returned to the caller — do not fall back to unkeyed `fetchAd`.
+    public func fetchAd(format: AdFormat, externalAdId: String? = nil) async throws -> AdModel {
+        try await fetchAd(type: AdType(format: format), externalAdId: externalAdId)
+    }
+
+    /// Alias for ``fetchAd(format:externalAdId:)``.
+    public func requestAd(format: AdFormat, externalAdId: String? = nil) async throws -> AdModel {
+        try await fetchAd(format: format, externalAdId: externalAdId)
+    }
+
+    private static func isNoEligibleAd(_ error: Error) -> Bool {
+        guard let error = error as? BetterAdsError else { return false }
+        switch error {
+        case .unknownAdType, .httpStatus(code: 404, body: _):
+            return true
+        default:
+            return false
+        }
     }
 
     /// Reports an impression. Best-effort and non-blocking — never throws.

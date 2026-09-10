@@ -67,6 +67,43 @@ final class AdViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testKeyedMiss_failsEvenWhenPreviousCreativeWasShowing() async {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+        await http.enqueue(statusCode: 404, json: #"{"error":"not_found"}"#)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+        let viewModel = AdViewModel(
+            client: client,
+            type: adType,
+            externalAdId: "book_of_the_week_de"
+        )
+
+        await viewModel.loadIfNeeded()
+        guard case .loaded = viewModel.state else {
+            return XCTFail("Expected loaded state, got \(viewModel.state)")
+        }
+
+        await viewModel.revalidate()
+        guard case .failed = viewModel.state else {
+            return XCTFail("Expected failed after keyed miss, got \(viewModel.state)")
+        }
+
+        let requests = await http.recordedRequests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertTrue(requests.allSatisfy { $0.url?.absoluteString.contains("externalAdId=book_of_the_week_de") == true })
+    }
+
+    @MainActor
     func testImpression_notTrackedBeforeLoad() async {
         let http = MockHTTPClient()
         let client = makeClient(http: http)

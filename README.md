@@ -22,7 +22,7 @@ In Xcode → **Package Dependencies** → **Add Package** → paste:
 https://github.com/bookietheapp/better-ads-ios.git
 ```
 
-Product: `BetterAds`. Pin to a **version tag** (e.g. `0.1.0`) or `main` while iterating.
+Product: `BetterAds`. Pin to a **version tag** (e.g. `0.3.0`) or `main` while iterating.
 
 ### Local (SDK development)
 
@@ -37,7 +37,7 @@ In Xcode → Package Dependencies → Add Local → select this folder, or in `P
 | `BetterAdsContentMode` | Behavior |
 |------------------------|----------|
 | `.fixture` (**spike default**) | Built-in sample creatives. No network, no `baseURL`, no auth. Ads analytics POSTs are skipped. |
-| `.serveV1` (**current remote**) | SDK-owned serve endpoint (`size` + optional `app=` via `appName` while unauthenticated) |
+| `.serveV1` (**current remote**) | SDK-owned serve endpoint (`size` + optional `app=` via `appName`, optional `externalAdId` for keyed Serve) |
 | `.bookieGetAd` | Legacy: `GET /getAd?size={format}` (+ optional Bearer via `BetterAdsAuthProviding`) — host `baseURL` |
 | `.dedicatedAPI` | Future: `GET /ads/{format}` — host `baseURL` |
 
@@ -124,6 +124,27 @@ client.setUserID(loggedInUserId) // or nil when logged out / guest
 ```
 
 The SDK owns `device_id` (persisted) and `session_id` (rotates on logout when you clear user id). See [`docs/IDENTITY_AND_ANALYTICS.md`](../docs/IDENTITY_AND_ANALYTICS.md).
+
+### Keyed Serve (`externalAdId`)
+
+Unkeyed `BetterAdView(format:)` still picks from ads **without** an External Ad Id.
+
+To fetch a specific Publisher-owned ad (for example Book of the Week), pass `externalAdId`. On keyed **404**, the SDK surfaces “no ad” and does **not** retry as unkeyed Serve. Impressions and clicks still use `adId` from the payload.
+
+```swift
+// Placement
+BetterAdView(
+    format: .banner,
+    client: AppAds.client,
+    externalAdId: "book_of_the_week_de"
+)
+
+// Programmatic
+let ad = try await AppAds.client.fetchAd(
+    format: .banner,
+    externalAdId: "book_of_the_week_de"
+)
+```
 
 ## What the SDK owns vs the host
 

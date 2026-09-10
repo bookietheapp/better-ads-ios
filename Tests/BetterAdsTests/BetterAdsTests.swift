@@ -86,6 +86,138 @@ final class BetterAdsTests: XCTestCase {
         XCTAssertEqual(requests[0].headers["X-Api-Key"], "future-key")
     }
 
+    func testFetchAd_serveV1_includesExternalAdIdWhenKeyed() async throws {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+        _ = try await client.fetchAd(format: .banner, externalAdId: "book_of_the_week_de")
+
+        let requests = await http.recordedRequests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(
+            requests[0].url?.absoluteString,
+            BetterAdsEndpoints.serveV1BaseURL.appendingPathComponent("api/v1/serve")
+                .absoluteString + "?app=Bookie&size=banner&externalAdId=book_of_the_week_de"
+        )
+    }
+
+    func testRequestAd_isAliasForKeyedFetchAd() async throws {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+        let ad = try await client.requestAd(format: .banner, externalAdId: "book_of_the_week_de")
+        XCTAssertEqual(ad.adId, "42")
+
+        let requests = await http.recordedRequests
+        XCTAssertTrue(requests[0].url?.absoluteString.contains("externalAdId=book_of_the_week_de") == true)
+    }
+
+    func testFetchAd_serveV1_omitsBlankExternalAdId() async throws {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+        _ = try await client.fetchAd(format: .banner, externalAdId: "  ")
+
+        let requests = await http.recordedRequests
+        XCTAssertEqual(
+            requests[0].url?.absoluteString,
+            BetterAdsEndpoints.serveV1BaseURL.appendingPathComponent("api/v1/serve")
+                .absoluteString + "?app=Bookie&size=banner"
+        )
+    }
+
+    func testFetchAd_keyed404_doesNotRetryUnkeyed() async {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 404, json: #"{"error":"not_found"}"#)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+
+        do {
+            _ = try await client.fetchAd(format: .banner, externalAdId: "book_of_the_week_de")
+            XCTFail("Expected keyed miss")
+        } catch let error as BetterAdsError {
+            XCTAssertEqual(error, .unknownAdType(AdType(format: .banner)))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let requests = await http.recordedRequests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertTrue(requests[0].url?.absoluteString.contains("externalAdId=book_of_the_week_de") == true)
+    }
+
+    func testFetchAd_keyedAndUnkeyedUseSeparateCacheSlots() async throws {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+
+        let client = BetterAdsClient(
+            configuration: BetterAdsConfiguration(
+                apiKey: "nos_test",
+                contentMode: .serveV1,
+                appName: "Bookie",
+                locale: Locale(identifier: "en_US")
+            ),
+            httpClient: http,
+            analyticsTaskRunner: ImmediateAnalyticsTaskRunner()
+        )
+
+        _ = try await client.fetchAd(format: .banner)
+        _ = try await client.fetchAd(format: .banner, externalAdId: "book_of_the_week_de")
+        XCTAssertNotNil(client.cachedAd(for: adType))
+        XCTAssertNotNil(client.cachedAd(for: adType, externalAdId: "book_of_the_week_de"))
+
+        await http.enqueue(statusCode: 404, json: #"{"error":"not_found"}"#)
+        do {
+            _ = try await client.fetchAd(format: .banner, externalAdId: "book_of_the_week_de")
+            XCTFail("Expected keyed miss")
+        } catch is BetterAdsError {
+            // expected
+        }
+
+        XCTAssertNotNil(client.cachedAd(for: adType), "Unkeyed cache must survive a keyed miss")
+        XCTAssertNil(client.cachedAd(for: adType, externalAdId: "book_of_the_week_de"))
+    }
+
     func testFetchAd_serveV1_includesIsTestEnvWhenEnabled() async throws {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)

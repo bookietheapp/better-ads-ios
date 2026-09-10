@@ -13,6 +13,7 @@ import SwiftUI
 /// Host callbacks are observation-only (e.g. Firebase bridge) — they do not own navigation.
 public struct BetterAdView: View {
     private let format: AdFormat
+    private let externalAdId: String?
     private let explicitClient: BetterAdsClient?
     private let onClick: ((AdCTAAction) -> Void)?
     private let onImpression: ((AdModel) -> Void)?
@@ -23,15 +24,20 @@ public struct BetterAdView: View {
     /// Creates an ad view that reads `BetterAdsClient` from the environment.
     ///
     /// - Parameters:
+    ///   - externalAdId: Publisher-owned id for keyed Serve. Omit for the unkeyed pool.
+    ///     A keyed miss renders nothing and reports `onAvailabilityChanged(false)` —
+    ///     it does **not** fall back to unkeyed Serve.
     ///   - onImpression: Optional host observation after the SDK records an impression.
     ///   - onClick: Optional host observation after the SDK records a click and opens `ctaLink`.
     public init(
         format: AdFormat,
+        externalAdId: String? = nil,
         onImpression: ((AdModel) -> Void)? = nil,
         onClick: ((AdCTAAction) -> Void)? = nil,
         onAvailabilityChanged: ((Bool) -> Void)? = nil
     ) {
         self.format = format
+        self.externalAdId = externalAdId
         self.explicitClient = nil
         self.onImpression = onImpression
         self.onClick = onClick
@@ -42,11 +48,13 @@ public struct BetterAdView: View {
     public init(
         format: AdFormat,
         client: BetterAdsClient,
+        externalAdId: String? = nil,
         onImpression: ((AdModel) -> Void)? = nil,
         onClick: ((AdCTAAction) -> Void)? = nil,
         onAvailabilityChanged: ((Bool) -> Void)? = nil
     ) {
         self.format = format
+        self.externalAdId = externalAdId
         self.explicitClient = client
         self.onImpression = onImpression
         self.onClick = onClick
@@ -57,6 +65,7 @@ public struct BetterAdView: View {
     public init(
         format: AdFormat,
         client: BetterAdsClient,
+        externalAdId: String? = nil,
         onImpression: ((AdModel) -> Void)? = nil,
         onAction: ((AdCTAAction) -> Void)?,
         onAvailabilityChanged: ((Bool) -> Void)? = nil
@@ -64,6 +73,7 @@ public struct BetterAdView: View {
         self.init(
             format: format,
             client: client,
+            externalAdId: externalAdId,
             onImpression: onImpression,
             onClick: onAction,
             onAvailabilityChanged: onAvailabilityChanged
@@ -76,10 +86,12 @@ public struct BetterAdView: View {
                 BetterAdContent(
                     client: client,
                     format: format,
+                    externalAdId: externalAdId,
                     onImpression: onImpression,
                     onClick: onClick,
                     onAvailabilityChanged: onAvailabilityChanged
                 )
+                .id("\(format.rawValue)|\(externalAdId ?? "")")
             } else {
                 Color.clear
                     .frame(height: 0)
@@ -108,6 +120,7 @@ private struct BetterAdContent: View {
     init(
         client: BetterAdsClient,
         format: AdFormat,
+        externalAdId: String?,
         onImpression: ((AdModel) -> Void)?,
         onClick: ((AdCTAAction) -> Void)?,
         onAvailabilityChanged: ((Bool) -> Void)?
@@ -117,7 +130,11 @@ private struct BetterAdContent: View {
         self.onClick = onClick
         self.onAvailabilityChanged = onAvailabilityChanged
         _viewModel = StateObject(
-            wrappedValue: AdViewModel(client: client, type: AdType(format: format))
+            wrappedValue: AdViewModel(
+                client: client,
+                type: AdType(format: format),
+                externalAdId: externalAdId
+            )
         )
     }
 
@@ -164,7 +181,7 @@ private struct BetterAdContent: View {
             }
         }
         // SDK-owned: revalidate on appear / foreground — not host refresh tokens.
-        .task(id: format) {
+        .task(id: viewModel.placementIdentity) {
             await viewModel.revalidate()
         }
         .onChange(of: scenePhase) { _, phase in
