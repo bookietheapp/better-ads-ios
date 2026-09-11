@@ -23,7 +23,22 @@ final class AdViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testImpression_trackedOnceOnAppear() async {
+    func testLoadIfNeeded_doesNotRefetchWhenAlreadyLoaded() async {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+        let client = makeClient(http: http)
+        let viewModel = AdViewModel(client: client, type: adType)
+
+        await viewModel.loadIfNeeded()
+        await viewModel.loadIfNeeded()
+
+        let requests = await http.recordedRequests
+        XCTAssertEqual(requests.filter { $0.method == "GET" }.count, 1)
+    }
+
+    @MainActor
+    func testImpression_trackedOncePerViewModel() async {
         let http = MockHTTPClient()
         await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
         await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
@@ -39,6 +54,51 @@ final class AdViewModelTests: XCTestCase {
             $0.method == "POST" && $0.url?.path.hasSuffix("/events") == true
         }
         XCTAssertEqual(impressionCalls.count, 1)
+    }
+
+    @MainActor
+    func testImpression_resetAllowsSecondTrack() async {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+        await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
+        await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
+        let client = makeClient(http: http)
+        let viewModel = AdViewModel(client: client, type: adType)
+
+        await viewModel.loadIfNeeded()
+        XCTAssertTrue(viewModel.trackImpressionIfNeeded(sessionID: "explore-1"))
+        viewModel.resetImpressionEligibility()
+        XCTAssertTrue(viewModel.trackImpressionIfNeeded(sessionID: "explore-1"))
+
+        let requests = await http.recordedRequests
+        let impressionCalls = requests.filter {
+            $0.method == "POST" && $0.url?.path.hasSuffix("/events") == true
+        }
+        XCTAssertEqual(impressionCalls.count, 2)
+    }
+
+    @MainActor
+    func testImpression_dedupedAcrossViewModelsInSameSession() async {
+        let http = MockHTTPClient()
+        await http.enqueue(statusCode: 200, json: TestFixtures.sampleAdJSON)
+        await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
+        await http.enqueue(statusCode: 200, json: #"{"ok":true,"accepted":1,"rejected":[]}"#)
+        let client = makeClient(http: http)
+        let first = AdViewModel(client: client, type: adType)
+        await first.loadIfNeeded()
+        XCTAssertTrue(first.trackImpressionIfNeeded(sessionID: "explore-1"))
+
+        let remounted = AdViewModel(client: client, type: adType)
+        XCTAssertFalse(remounted.trackImpressionIfNeeded(sessionID: "explore-1"))
+        XCTAssertFalse(remounted.trackImpressionIfNeeded(sessionID: "uuid-from-second-compose"))
+        client.resetImpressionSession()
+        XCTAssertTrue(remounted.trackImpressionIfNeeded(sessionID: "uuid-from-second-compose"))
+
+        let requests = await http.recordedRequests
+        let impressionCalls = requests.filter {
+            $0.method == "POST" && $0.url?.path.hasSuffix("/events") == true
+        }
+        XCTAssertEqual(impressionCalls.count, 2)
     }
 
     @MainActor

@@ -2,9 +2,9 @@ import Foundation
 
 /// Loads ad content and owns impression / click reporting for a single placement.
 ///
-/// Creative selection is owned by the serve API: the view model revalidates on
-/// appear / host surface refresh, keeps the current creative while fetching, and
-/// only swaps UI when the payload changes.
+/// Creative selection is owned by the serve API: load once, revalidate only when
+/// the host starts a new screen session, keep the current creative while fetching,
+/// and only swap UI when the payload changes.
 @MainActor
 final class AdViewModel: ObservableObject {
     enum State: Equatable {
@@ -49,6 +49,17 @@ final class AdViewModel: ObservableObject {
         AdResponseCache.key(type: type, externalAdId: externalAdId)
     }
 
+    /// Fetches only when this slot has nothing to show. Scroll off/on and lazy
+    /// remounts reuse the cached creative — they do not hit Serve again.
+    func loadIfNeeded() async {
+        switch state {
+        case .loaded, .failed:
+            return
+        case .idle, .loading:
+            await revalidate()
+        }
+    }
+
     /// Asks the serve API whether this slot should keep or replace its creative.
     ///
     /// - Keeps the current creative visible while fetching (no flash).
@@ -90,26 +101,37 @@ final class AdViewModel: ObservableObject {
         }
     }
 
-    /// Backward-compatible alias used by older call sites / tests.
-    func loadIfNeeded() async {
-        await revalidate()
-    }
-
-    /// Called when the rendered ad content appears. Fires at most once per `adId`
-    /// for this view model instance.
+    /// Called after Bookie-parity viewability (50% + 200 ms dwell). Fires at most
+    /// once per `adId` per host screen session, even if the placement remounts.
     /// - Returns: `true` when an impression was newly tracked.
     @discardableResult
-    func trackImpressionIfNeeded() -> Bool {
-        guard case .loaded = state, !didTrackImpression, let ad else { return false }
+    func trackImpressionIfNeeded(sessionID: String? = nil) -> Bool {
+        guard case .loaded = state, let ad else { return false }
+        guard client.impressionLedger.consume(placement: placementIdentity, adId: ad.adId) else {
+            AdLog.info("impression skipped already recorded adId=\(ad.adId) size=\(type.rawValue)")
+            return false
+        }
         didTrackImpression = true
+        AdLog.info("impression adId=\(ad.adId) size=\(type.rawValue)")
         client.trackImpression(adId: ad.adId)
         return true
+    }
+
+    /// Allows another impression after the host starts a new screen session
+    /// (Explore visit, pull-to-refresh, returning to Search / feed).
+    func resetImpressionEligibility() {
+        if let ad {
+            client.impressionLedger.release(placement: placementIdentity, adId: ad.adId)
+        }
+        didTrackImpression = false
+        AdLog.info("impression session reset size=\(type.rawValue)")
     }
 
     /// Tracks the click and returns the CTA action for host / system navigation.
     @discardableResult
     func handleClick() -> AdCTAAction? {
         guard let ad else { return nil }
+        AdLog.info("click adId=\(ad.adId) cta=\(ad.ctaLink)")
         client.trackClick(adId: ad.adId, ctaValue: ad.ctaLink)
         return ad.ctaAction
     }

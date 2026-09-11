@@ -15,6 +15,7 @@ public final class BetterAdsClient: @unchecked Sendable {
     private let logger: Logger
     private let analyticsTaskRunner: AnalyticsTaskRunner
     private let adCache = AdResponseCache()
+    let impressionLedger = AdImpressionLedger()
     #if os(iOS)
     private var flushCoordinator: AdEventFlushCoordinator?
     #endif
@@ -120,6 +121,16 @@ public final class BetterAdsClient: @unchecked Sendable {
         identity.setUserID(userID)
     }
 
+    /// Allows every placement to impress again after a **new screen visit**
+    /// (tab selected, pull-to-refresh, opening search).
+    ///
+    /// Scroll off/on does **not** need this — the SDK already ignores list recycle.
+    /// Call it from screen-level visit hooks when rows may have been disposed.
+    public func resetImpressionSession() {
+        impressionLedger.clear()
+        AdLog.info("impression session reset (client)")
+    }
+
     /// Last successfully fetched creative for `type` + optional keyed id, if any (process memory).
     func cachedAd(for type: AdType, externalAdId: String? = nil) -> AdModel? {
         adCache.ad(for: type, externalAdId: externalAdId)
@@ -174,11 +185,16 @@ public final class BetterAdsClient: @unchecked Sendable {
     /// Reports an impression. Best-effort and non-blocking — never throws.
     /// Skipped in fixture mode (no ads analytics backend yet).
     func trackImpression(adId: String) {
-        guard contentMode != .fixture else { return }
-        guard let adIdInt = AdModel.parsePositiveInt(adId) else {
-            logger.warning("Skipping impression — invalid ad_id: \(adId, privacy: .public)")
+        guard contentMode != .fixture else {
+            AdLog.info("impression skipped fixture adId=\(adId)")
             return
         }
+        guard let adIdInt = AdModel.parsePositiveInt(adId) else {
+            logger.warning("Skipping impression — invalid ad_id: \(adId, privacy: .public)")
+            AdLog.info("impression skipped invalid adId=\(adId)")
+            return
+        }
+        AdLog.info("impression queued adId=\(adIdInt)")
         analyticsTaskRunner.run { [eventQueue, identity, configuration] in
             let id = identity.snapshot
             let event = AdEvent(
@@ -196,11 +212,16 @@ public final class BetterAdsClient: @unchecked Sendable {
     /// Reports a Design tap. Best-effort and non-blocking — never throws.
     /// Skipped in fixture mode (no ads analytics backend yet).
     func trackClick(adId: String, ctaValue: String) {
-        guard contentMode != .fixture else { return }
-        guard let adIdInt = AdModel.parsePositiveInt(adId) else {
-            logger.warning("Skipping click — invalid ad_id: \(adId, privacy: .public)")
+        guard contentMode != .fixture else {
+            AdLog.info("click skipped fixture adId=\(adId)")
             return
         }
+        guard let adIdInt = AdModel.parsePositiveInt(adId) else {
+            logger.warning("Skipping click — invalid ad_id: \(adId, privacy: .public)")
+            AdLog.info("click skipped invalid adId=\(adId)")
+            return
+        }
+        AdLog.info("click queued adId=\(adIdInt)")
         analyticsTaskRunner.run { [eventQueue, identity, configuration] in
             let id = identity.snapshot
             let event = AdEvent(

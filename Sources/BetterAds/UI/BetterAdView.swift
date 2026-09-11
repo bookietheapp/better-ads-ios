@@ -3,11 +3,10 @@ import SwiftUI
 /// Ready-to-display ad view for a Bookie-parity format (`compact` / `banner` / `card`).
 ///
 /// Lifecycle (all owned by the SDK — hosts only place this view):
-/// - Revalidates with the serve API when the view appears.
-/// - Keeps the current creative on screen while fetching (no flash).
-/// - The API decides whether to return the same or a new creative; UI swaps only
-///   when the payload changes.
-/// - Not tied to every SwiftUI body recomposition.
+/// - Loads from Serve on first display (or from the in-memory cache on remount).
+/// - Revalidates only when the host screen session changes (pull-to-refresh / new visit).
+/// - Scrolling the slot off and back does **not** refetch or show the skeleton again.
+/// - Keeps the current creative on screen while a session revalidate is in flight.
 ///
 /// The SDK fetches, renders the hero image, tracks impression/click, and opens `ctaLink`.
 /// Host callbacks are observation-only (e.g. Firebase bridge) — they do not own navigation.
@@ -18,6 +17,9 @@ public struct BetterAdView: View {
     private let onClick: ((AdCTAAction) -> Void)?
     private let onImpression: ((AdModel) -> Void)?
     private let onAvailabilityChanged: ((Bool) -> Void)?
+    /// Optional screen-session token. Changing it on a still-mounted view re-arms
+    /// that placement. Per-row UUIDs are ignored for counting.
+    private let impressionSessionID: String?
 
     @Environment(\.betterAdsClient) private var environmentClient
 
@@ -29,12 +31,18 @@ public struct BetterAdView: View {
     ///     it does **not** fall back to unkeyed Serve.
     ///   - onImpression: Optional host observation after the SDK records an impression.
     ///   - onClick: Optional host observation after the SDK records a click and opens `ctaLink`.
+    ///   - impressionSessionID: Optional screen-session token. The SDK already
+    ///     counts at most once per placement + ad id across list recycle.
+    ///     Changing this on a still-mounted view re-arms that placement.
+    ///     Per-row UUIDs are ignored for counting. To re-arm after rows were
+    ///     disposed, call ``BetterAdsClient/resetImpressionSession()``.
     public init(
         format: AdFormat,
         externalAdId: String? = nil,
         onImpression: ((AdModel) -> Void)? = nil,
         onClick: ((AdCTAAction) -> Void)? = nil,
-        onAvailabilityChanged: ((Bool) -> Void)? = nil
+        onAvailabilityChanged: ((Bool) -> Void)? = nil,
+        impressionSessionID: String? = nil
     ) {
         self.format = format
         self.externalAdId = externalAdId
@@ -42,6 +50,7 @@ public struct BetterAdView: View {
         self.onImpression = onImpression
         self.onClick = onClick
         self.onAvailabilityChanged = onAvailabilityChanged
+        self.impressionSessionID = impressionSessionID
     }
 
     /// Creates an ad view with an explicit client.
@@ -51,7 +60,8 @@ public struct BetterAdView: View {
         externalAdId: String? = nil,
         onImpression: ((AdModel) -> Void)? = nil,
         onClick: ((AdCTAAction) -> Void)? = nil,
-        onAvailabilityChanged: ((Bool) -> Void)? = nil
+        onAvailabilityChanged: ((Bool) -> Void)? = nil,
+        impressionSessionID: String? = nil
     ) {
         self.format = format
         self.externalAdId = externalAdId
@@ -59,6 +69,7 @@ public struct BetterAdView: View {
         self.onImpression = onImpression
         self.onClick = onClick
         self.onAvailabilityChanged = onAvailabilityChanged
+        self.impressionSessionID = impressionSessionID
     }
 
     /// Backward-compatible alias — `onAction` is observation-only; the SDK still opens the CTA.
@@ -68,7 +79,8 @@ public struct BetterAdView: View {
         externalAdId: String? = nil,
         onImpression: ((AdModel) -> Void)? = nil,
         onAction: ((AdCTAAction) -> Void)?,
-        onAvailabilityChanged: ((Bool) -> Void)? = nil
+        onAvailabilityChanged: ((Bool) -> Void)? = nil,
+        impressionSessionID: String? = nil
     ) {
         self.init(
             format: format,
@@ -76,7 +88,8 @@ public struct BetterAdView: View {
             externalAdId: externalAdId,
             onImpression: onImpression,
             onClick: onAction,
-            onAvailabilityChanged: onAvailabilityChanged
+            onAvailabilityChanged: onAvailabilityChanged,
+            impressionSessionID: impressionSessionID
         )
     }
 
@@ -89,7 +102,8 @@ public struct BetterAdView: View {
                     externalAdId: externalAdId,
                     onImpression: onImpression,
                     onClick: onClick,
-                    onAvailabilityChanged: onAvailabilityChanged
+                    onAvailabilityChanged: onAvailabilityChanged,
+                    impressionSessionID: impressionSessionID
                 )
                 .id("\(format.rawValue)|\(externalAdId ?? "")")
             } else {
@@ -113,8 +127,8 @@ private struct BetterAdContent: View {
     let onImpression: ((AdModel) -> Void)?
     let onClick: ((AdCTAAction) -> Void)?
     let onAvailabilityChanged: ((Bool) -> Void)?
+    let impressionSessionID: String?
 
-    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: AdViewModel
 
     init(
@@ -123,12 +137,14 @@ private struct BetterAdContent: View {
         externalAdId: String?,
         onImpression: ((AdModel) -> Void)?,
         onClick: ((AdCTAAction) -> Void)?,
-        onAvailabilityChanged: ((Bool) -> Void)?
+        onAvailabilityChanged: ((Bool) -> Void)?,
+        impressionSessionID: String?
     ) {
         self.format = format
         self.onImpression = onImpression
         self.onClick = onClick
         self.onAvailabilityChanged = onAvailabilityChanged
+        self.impressionSessionID = impressionSessionID
         _viewModel = StateObject(
             wrappedValue: AdViewModel(
                 client: client,
@@ -147,8 +163,8 @@ private struct BetterAdContent: View {
                 EmptyView()
             case let .loaded(ad):
                 layout(for: ad)
-                    .onAppear {
-                        if viewModel.trackImpressionIfNeeded() {
+                    .onAdVisible(trackingKey: "\(impressionSessionID ?? "")|\(ad.adId)") {
+                        if viewModel.trackImpressionIfNeeded(sessionID: impressionSessionID) {
                             onImpression?(ad)
                         }
                     }
@@ -177,12 +193,13 @@ private struct BetterAdContent: View {
                 break
             }
         }
-        // SDK-owned: revalidate on appear / foreground — not host refresh tokens.
+        // First display only. Lazy lists cancel `.task` when the row leaves the
+        // window — `loadIfNeeded` must not refetch a creative that is already cached.
         .task(id: viewModel.placementIdentity) {
-            await viewModel.revalidate()
+            await viewModel.loadIfNeeded()
         }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+        .onChange(of: impressionSessionID) { _, _ in
+            viewModel.resetImpressionEligibility()
             Task { await viewModel.revalidate() }
         }
     }

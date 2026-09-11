@@ -22,7 +22,7 @@ In Xcode → **Package Dependencies** → **Add Package** → paste:
 https://github.com/bookietheapp/better-ads-ios.git
 ```
 
-Product: `BetterAds`. Pin to a **version tag** (e.g. `0.3.1`) or `main` while iterating.
+Product: `BetterAds`. Pin to a **version tag** (e.g. `0.4.0`) or `main` while iterating.
 
 ### Local (SDK development)
 
@@ -146,6 +146,27 @@ let ad = try await AppAds.client.fetchAd(
 )
 ```
 
+## Impressions
+
+The SDK owns viewability and counting. Hosts only place `BetterAdView`.
+
+An impression fires when ≥ 50% of the **whole ad view** intersects the safe viewport for ≥ 200 ms, scroll is calm (≤ 1200 pt/s vertical), 350 ms layout warmup has elapsed, and the app is in the foreground. Fixture mode skips the events POST.
+
+**Scroll / list recycle — no host work.** Lazy stacks dispose rows. The SDK latches once per placement + `adId` on the client, so scrolling the slot off and back does **not** send another impression. Do not create a new UUID inside the row (`@State` on the item) as a way to start a new session — the SDK ignores that for counting.
+
+**New screen visit / pull-to-refresh — optional.** To allow the same placement to impress again, call `resetImpressionSession()` on the shared client from a **screen-level** hook (tab selected, pull-to-refresh, search opened). That works even if the ad row was recycled.
+
+Alternatively, pass `impressionSessionID` owned **above** the list and change it on that visit. A still-mounted `BetterAdView` re-arms when the value changes.
+
+Omit both if one impression per placement per process is enough.
+
+```swift
+// When the screen session starts (visit / PTR)
+AppAds.client.resetImpressionSession()
+
+BetterAdView(format: .banner, client: AppAds.client)
+```
+
 ## What the SDK owns vs the host
 
 | Concern | Owner |
@@ -154,7 +175,7 @@ let ad = try await AppAds.client.fetchAd(
 | Set `user_id` on auth (`setUserID`) | Host |
 | Fetch creative | SDK |
 | Render layout | SDK (`BetterAdView`) |
-| Ads-backend impression / click events | SDK → batched `POST /api/v1/events` (no-op in `.fixture`) |
+| Ads-backend impression / click events | SDK → batched `POST /api/v1/events` (no-op in `.fixture`). See [Impressions](#impressions). |
 | Open CTA (`ctaLink` → `SFSafariViewController` for http(s), otherwise `UIApplication.open`) | SDK |
 | Host analytics (Firebase `impression` / `placement_ad_click`, etc.) | Host via `onImpression` / `onClick` only |
 

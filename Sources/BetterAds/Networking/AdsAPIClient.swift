@@ -61,25 +61,28 @@ struct AdsAPIClient: @unchecked Sendable {
             queryItems: queryItems
         )
 
-        #if DEBUG
         if let url = request.url?.absoluteString {
-            print("[BetterAds] GET \(url)")
+            AdLog.info("GET \(url)")
         }
-        #endif
 
         let (data, response) = try await httpClient.send(request)
 
         switch response.statusCode {
         case 200 ... 299:
             do {
-                return try decoder.decode(AdModel.self, from: data)
+                let ad = try decoder.decode(AdModel.self, from: data)
+                AdLog.info("serve \(response.statusCode) adId=\(ad.adId) size=\(ad.size)")
+                return ad
             } catch {
+                AdLog.info("serve decode failed: \(error)")
                 throw BetterAdsError.decodingFailed(String(describing: error))
             }
         case 404:
+            AdLog.info("serve 404 no ad size=\(type.rawValue) externalAdId=\(keyedId ?? "-")")
             throw BetterAdsError.unknownAdType(type)
         default:
             let body = String(data: data, encoding: .utf8)
+            AdLog.info("serve \(response.statusCode) size=\(type.rawValue) body=\(body ?? "")")
             throw BetterAdsError.httpStatus(code: response.statusCode, body: body)
         }
     }
