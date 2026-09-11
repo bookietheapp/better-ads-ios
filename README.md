@@ -22,7 +22,7 @@ In Xcode → **Package Dependencies** → **Add Package** → paste:
 https://github.com/bookietheapp/better-ads-ios.git
 ```
 
-Product: `BetterAds`. Pin to a **version tag** (e.g. `0.4.0`) or `main` while iterating.
+Product: `BetterAds`. Pin to a **version tag** (e.g. `0.4.1`) or `main` while iterating.
 
 ### Local (SDK development)
 

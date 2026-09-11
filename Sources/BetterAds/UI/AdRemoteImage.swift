@@ -18,7 +18,6 @@ private typealias PlatformImage = NSImage
 /// after the creative has already downloaded.
 struct AdRemoteImage<Placeholder: View, Content: View>: View {
     let url: URL?
-    let pointSize: CGSize
     let placeholder: () -> Placeholder
     let imageContent: (Image) -> Content
 
@@ -37,7 +36,7 @@ struct AdRemoteImage<Placeholder: View, Content: View>: View {
                 placeholder()
             }
         }
-        .frame(width: pointSize.width, height: pointSize.height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var resolvedImage: PlatformImage? {

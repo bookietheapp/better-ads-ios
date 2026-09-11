@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Template-sized placeholder shown while Serve is in flight.
+/// Template-shaped placeholder shown while Serve is in flight.
 ///
-/// Matches the loaded hero frame (size, corner radius, Ad chip) so the slot does
-/// not collapse or flash empty. Motion is a gentle pulse; it is disabled when
-/// Reduce Motion is on.
+/// Matches the loaded hero frame (width, aspect ratio, corner radius, Ad chip) so the
+/// slot does not collapse, flash empty, or resize when the creative arrives. Motion is
+/// a gentle pulse; it is disabled when Reduce Motion is on.
 struct AdSkeletonView: View {
     let format: AdFormat
 
-    private var frameSize: CGSize {
-        AdLayoutMetrics.templateSize(for: format)
+    private var aspectRatio: CGFloat {
+        AdLayoutMetrics.templateAspectRatio(for: format)
     }
 
     var body: some View {
@@ -17,9 +17,9 @@ struct AdSkeletonView: View {
             AdSkeletonFill()
             AdAdvertisementLabel(style: AdLayoutMetrics.advertisementLabelStyle(for: format))
         }
-        .frame(width: frameSize.width, height: frameSize.height)
-        .clipShape(RoundedRectangle(cornerRadius: AdLayoutMetrics.cornerRadius, style: .continuous))
         .frame(maxWidth: .infinity)
+        .aspectRatio(aspectRatio, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: AdLayoutMetrics.cornerRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Loading advertisement", bundle: .module))
     }

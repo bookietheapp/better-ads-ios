@@ -1,42 +1,39 @@
 import SwiftUI
 
-/// NativeOS image-only Design: hero fills the Template 1x frame; the image is the tap target.
+/// NativeOS image-only Design: hero fills the host's content width at the Template
+/// aspect ratio; the image is the tap target.
 struct HeroAdLayout: View {
     let ad: AdModel
     let format: AdFormat
     let onCTA: () -> Void
 
-    private var frameSize: CGSize {
-        AdLayoutMetrics.templateSize(for: format)
+    private var aspectRatio: CGFloat {
+        AdLayoutMetrics.templateAspectRatio(for: format)
     }
 
     var body: some View {
         Button(action: onCTA) {
-            ZStack(alignment: .topTrailing) {
-                AdRemoteImage(
-                    url: ad.images.hero.url(for: AdDisplayScale.current),
-                    pointSize: frameSize,
-                    placeholder: {
-                        AdSkeletonFill()
-                            .frame(width: frameSize.width, height: frameSize.height)
-                    },
-                    imageContent: { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: frameSize.width, height: frameSize.height)
-                            .clipped()
-                    }
-                )
-                .frame(width: frameSize.width, height: frameSize.height)
-
-                AdAdvertisementLabel(style: AdLayoutMetrics.advertisementLabelStyle(for: format))
-            }
+            Color.clear
+                .overlay {
+                    AdRemoteImage(
+                        url: ad.images.hero.url(for: AdDisplayScale.current),
+                        placeholder: { AdSkeletonFill() },
+                        imageContent: { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        }
+                    )
+                }
+                .clipped()
+                .overlay(alignment: .topTrailing) {
+                    AdAdvertisementLabel(style: AdLayoutMetrics.advertisementLabelStyle(for: format))
+                }
         }
         .buttonStyle(.plain)
-        .frame(width: frameSize.width, height: frameSize.height)
-        .clipShape(RoundedRectangle(cornerRadius: AdLayoutMetrics.cornerRadius, style: .continuous))
         .frame(maxWidth: .infinity)
+        .aspectRatio(aspectRatio, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: AdLayoutMetrics.cornerRadius, style: .continuous))
         .accessibilityLabel(String(localized: "Advertisement", bundle: .module))
         .accessibilityAddTraits(.isButton)
     }
